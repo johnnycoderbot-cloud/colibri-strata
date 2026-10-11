@@ -5,10 +5,12 @@ A fork of [JustVugg/colibri](https://github.com/JustVugg/colibri) pursuing
 across every Colibri text-generation family.
 
 **Current status: experimental live parallel heads in the native qwen36 CPU
-decoder; other-family/device adapters remain pending.** Real-checkpoint rollback
-tests pass, but the current trained bank has **no clear repeatable speedup**:
-regular Colibri 39.829 vs the fork 39.471 median tokens/s in the same CPU test.
-[Measured comparison and limits](experimental/strata/results/native-cpu-comparison.json).
+decoder; other-family/device adapters remain pending.** The Strata-inspired CPU
+ports measured **+1.3% and +3.3%** paired median decode gains in two trials,
+with gains varying by workload. The new residual heads passed real-checkpoint
+rollback tests but made the same optimized decoder **2.9% slower** on fresh
+prompts. They remain opt-in experiments.
+[Fresh measurements and limits](experimental/strata/results/residual-fresh-cpu-comparison.json).
 This fork does not promise 200 tokens/s or accelerated decoding across all families.
 
 Included now:
@@ -28,6 +30,10 @@ Included now:
   and accepted-state retention for qualified qwen36 CPU greedy requests. Exact
   batched CPU readout and distinct-expert MoE chunks; real paired benchmark tool.
   See [native parallel heads](docs/native-parallel-heads.md) for setup and evidence.
+- Shared prepared CPU activations across QKV/gate-up/DeltaNet projections and
+  INT8 weight/sign reuse across verification rows. Explicit cached-logit residual
+  heads reuse the target output scores with independent learned corrections.
+  See [CPU port scope and UnbiasedStrata source](docs/strata-cpu-ports.md).
 - Optional ONNX GPU/NPU and JAX GPU/TPU standalone head runners with explicit device
   refusal and profiling; physical Intel GPU, AIPU vendor-artifact and NVMe checks.
   See the [precision/hardware matrix](docs/precision-hardware.md) for exact limits.

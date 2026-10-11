@@ -13,6 +13,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 
 CROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("export_native_heads", CROOT / "tools" / "export_native_heads.py")
@@ -183,6 +184,48 @@ class ExporterTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "native_fingerprint"):
             exporter.export_pack(wrong, self.root, augmented)
 
+    def test_residual_requires_explicit_kind_and_preserves_encoded_bytes(self):
+        p = pack(self.root)
+        residual = {**p, "schema": exporter.RESIDUAL_SCHEMA, "kind": "logit-residual"}
+        with self.assertRaises(ValueError): exporter.export_pack(residual, self.root, "fixture-native-f32")
+        with self.assertRaises(ValueError): exporter.export_pack(p, self.root, "fixture-native-f32", kind="logit-residual")
+        with self.assertRaises(ValueError): exporter.export_pack(p, self.root, "fixture-native-f32", kind="unknown")
+        with self.assertRaises(ValueError): exporter.export_pack({**p, "kind": "logit-residual"}, self.root, "fixture-native-f32")
+        for bits in (4, 8, 16):
+            blob = exporter.export_pack(residual, self.root, "fixture-native-f32", bits, kind="logit-residual")
+            self.assertEqual(struct.unpack_from("<4s7I", blob), (b"CSNH", 2, 96, 17, 9, 2, bits, 1))
+            records = [{**head, "down": exporter.precision.encode(head["down"], bits),
+                         "up": exporter.precision.encode(head["up"], bits)} for head in p["heads"]]
+            borrowed = exporter.export_encoded_residual(p["identity"], records, self.root, "fixture-native-f32", bits)
+            self.assertEqual(blob, borrowed)
+        records = [{**head, "down": exporter.precision.encode(head["down"], 4),
+                     "up": exporter.precision.encode(head["up"], 4)} for head in p["heads"]]
+        for change in ("not-object", "float-offset", "missing-down", "missing-up", "truncated", "padding", "rank", "bias", "precision"):
+            wrong = copy.deepcopy(records); requested = 4
+            if change == "not-object": wrong[0] = None
+            if change == "float-offset": wrong[0]["future_offset"] = 2.0
+            if change == "missing-down": del wrong[0]["down"]
+            if change == "missing-up": del wrong[0]["up"]
+            if change == "truncated": wrong[1]["up"] = wrong[1]["up"][:-1]
+            if change == "padding":
+                bad = bytearray(wrong[0]["down"]); bad[-1] |= 16; wrong[0]["down"] = bytes(bad)
+            if change == "rank": wrong[0]["rank"] = 2
+            if change == "bias": wrong[1]["bias"][0] = float("nan")
+            if change == "precision": requested = 8
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                exporter.export_encoded_residual(p["identity"], wrong, self.root, "fixture-native-f32", requested)
+
+    def test_cli_residual_header(self):
+        p = pack(self.root); p.update(schema=exporter.RESIDUAL_SCHEMA, kind="logit-residual")
+        source = self.root / "residual.json"; source.write_text(json.dumps(p))
+        output = self.root / "residual.snh"
+        command = [sys.executable, str(CROOT / "tools/export_native_heads.py"), "--model-dir", str(self.root),
+                   "--runtime-precision", "fixture-native-f32", "--pack", str(source), "--output", str(output),
+                   "--bank-kind", "logit-residual", "--bits", "8"]
+        result = subprocess.run(command, capture_output=True, text=True, check=True)
+        self.assertEqual(json.loads(result.stdout)["version"], 2)
+        self.assertEqual(struct.unpack_from("<I", output.read_bytes(), 28)[0], 1)
+
 
 @unittest.skipUnless(shutil.which("gcc"), "optional GCC native ABI interop compiler unavailable")
 class NativeInteropTests(unittest.TestCase):
@@ -202,6 +245,12 @@ class NativeInteropTests(unittest.TestCase):
         cls.lib.sn_predict_sized.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_float), ctypes.c_size_t,
                                            ctypes.POINTER(ctypes.c_int), ctypes.c_size_t, ctypes.c_int]
         cls.lib.sn_predict_sized.restype = ctypes.c_int
+        cls.lib.sn_bank_kind.argtypes = [ctypes.c_void_p]
+        cls.lib.sn_bank_kind.restype = ctypes.c_int
+        cls.lib.sn_predict_residual_sized.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_float), ctypes.c_size_t,
+                                                     ctypes.POINTER(ctypes.c_float), ctypes.c_size_t,
+                                                     ctypes.POINTER(ctypes.c_int), ctypes.c_size_t, ctypes.c_int]
+        cls.lib.sn_predict_residual_sized.restype = ctypes.c_int
         cls.lib.sn_close.argtypes = [ctypes.c_void_p]
         cls.lib.sn_close.restype = None
 
@@ -282,6 +331,52 @@ class NativeInteropTests(unittest.TestCase):
                         self.assertEqual(self.lib.sn_predict_sized(bank, features, 34, tokens, 1, parallel), 0)
                         self.assertEqual(tokens[0], expected)
             finally: self.lib.sn_close(bank)
+
+    def test_residual_reference_modes_kinds_and_concurrent_inputs(self):
+        rng = random.Random(404)
+        with tempfile.TemporaryDirectory() as directory:
+            root = model(directory, width=11, vocab=23); p = pack(root, count=8, rank=5)
+            p.update(schema=exporter.RESIDUAL_SCHEMA, kind="logit-residual")
+            for head in p["heads"]:
+                for key in ("down", "up", "bias"):
+                    head[key] = [rng.uniform(-.8, .8) for _ in head[key]]
+            fp = (ctypes.c_uint8 * 32).from_buffer_copy(exporter.fingerprint_model(root, "fixture-native-f32"))
+            rows = [[exporter.precision.f32(rng.uniform(-2, 2)) for _ in range(11)] for _ in range(12)]
+            bases = [[exporter.precision.f32(rng.uniform(-1, 1)) for _ in range(23)] for _ in rows]
+            for bits in (4, 8, 16):
+                blob = exporter.export_pack(p, root, "fixture-native-f32", bits, kind="logit-residual")
+                path = root / "bank.snh"; path.write_bytes(blob); bank = ctypes.c_void_p()
+                self.assertEqual(self.lib.sn_open(str(path).encode(), fp, 11, 23, ctypes.byref(bank)), 0)
+                try:
+                    self.assertEqual(self.lib.sn_bank_kind(bank), 1)
+                    decoded = [{key: exporter.precision.decode(exporter.precision.encode(head[key], bits))[1]
+                                for key in ("down", "up")} for head in p["heads"]]
+                    def check(index):
+                        row, base = rows[index], bases[index]
+                        expected = []
+                        for head, weights in zip(p["heads"], decoded):
+                            latent = [exporter.precision.f32(sum(weights["down"][r*11+d]*row[d] for d in range(11))) for r in range(5)]
+                            scores = [exporter.precision.f32(sum(weights["up"][v*5+r]*latent[r] for r in range(5))+
+                                                            exporter.precision.f32(head["bias"][v])+base[v]) for v in range(23)]
+                            expected.append(max(range(23), key=lambda v: scores[v]))
+                        x = (ctypes.c_float*11)(*row); b = (ctypes.c_float*23)(*base)
+                        before = bytes(b)
+                        for parallel in (0, 1):
+                            out = (ctypes.c_int*8)(*([-9]*8))
+                            self.assertEqual(self.lib.sn_predict_residual_sized(bank, x, 11, b, 23, out, 8, parallel), 0)
+                            self.assertEqual(list(out), expected); self.assertEqual(bytes(b), before)
+                            self.assertEqual(self.lib.sn_predict_sized(bank, x, 11, out, 8, parallel), 1)
+                            self.assertEqual(list(out), expected)
+                        b[22] = float("nan"); out = (ctypes.c_int*8)(*([-9]*8))
+                        self.assertEqual(self.lib.sn_predict_residual_sized(bank, x, 11, b, 23, out, 8, 1), 6)
+                        self.assertEqual(list(out), [-9]*8)
+                    with ThreadPoolExecutor(max_workers=3) as pool: list(pool.map(check, range(len(rows))))
+                finally: self.lib.sn_close(bank)
+                for version, kind in ((1, 1), (2, 0), (2, 2), (3, 1)):
+                    bad = bytearray(blob); struct.pack_into("<I", bad, 4, version); struct.pack_into("<I", bad, 28, kind)
+                    path.write_bytes(bad); rejected = ctypes.c_void_p()
+                    self.assertEqual(self.lib.sn_open(str(path).encode(), fp, 11, 23, ctypes.byref(rejected)), 1)
+                    self.assertFalse(rejected.value)
 
 
 if __name__ == "__main__": unittest.main(verbosity=2)

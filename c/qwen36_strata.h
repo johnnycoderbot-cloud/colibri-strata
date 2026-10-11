@@ -5,6 +5,10 @@
 static sn_bank *g_sn_bank;
 static sn_info g_sn_info;
 static float *g_sn_frontier, *g_sn_rows, *g_sn_features;
+/* Residual banks borrow the already-computed, unfiltered target distribution.
+ * Own one copy: samplers may mutate returned logits after step_ex publishes. */
+static float *g_sn_base;
+static int g_sn_residual, g_sn_base_valid, g_sn_base_pos = -1;
 static int g_sn_h, g_sn_valid, g_sn_pos = -1, g_sn_capture_rows;
 static FILE *g_sn_trace;
 static unsigned long long g_sn_generation;
@@ -15,6 +19,7 @@ static void q36_sn_shutdown(void) {
     if (g_sn_trace) { fclose(g_sn_trace); g_sn_trace = NULL; }
     sn_close(g_sn_bank); g_sn_bank = NULL;
     free(g_sn_frontier); free(g_sn_rows); free(g_sn_features); g_sn_frontier = g_sn_rows = g_sn_features = NULL;
+    free(g_sn_base); g_sn_base = NULL; g_sn_base_valid = 0;
 }
 static void q36_sn_init(Model *m, const char *dir, int bits) {
     const char *pack = getenv("COLI_STRATA_HEADS"), *trace = getenv("COLI_STRATA_TRACE");
@@ -49,6 +54,11 @@ static void q36_sn_init(Model *m, const char *dir, int bits) {
         if (status != SN_OK || sn_get_info(g_sn_bank,&g_sn_info) != SN_OK) {
             q36_sn_shutdown(); fprintf(stderr,"[strata] pack refused (status=%d)\n",(int)status); exit(1);
         }
+        g_sn_residual = sn_bank_kind(g_sn_bank) == SN_KIND_LOGIT_RESIDUAL;
+        if (g_sn_residual) {
+            g_sn_base = (float *)malloc((size_t)m->c.vocab*sizeof(float));
+            if (!g_sn_base) { q36_sn_shutdown(); fprintf(stderr,"[strata] raw logit allocation failed\n"); exit(1); }
+        }
         fprintf(stderr,"[strata] loaded %zu independent heads, source bits %u, decoded bytes %zu, kernel %s\n",
                 g_sn_info.head_count,g_sn_info.source_bits,g_sn_info.decoded_bytes,g_sn_info.kernel);
     }
@@ -79,6 +89,7 @@ static void q36_sn_trace_known(Model *m,int chosen,int pos) {
 }
 static void q36_sn_capture(Model *m,const float *x,const int *ids,int S,int pos) {
     if (!g_sn_frontier || S < 1) return;
+    if (g_sn_residual) g_sn_base_valid = 0;
     int D=m->c.hidden;
     if (g_sn_capture_rows == S && S <= 6) {
         for (int r=0;r<S;r++)
@@ -92,5 +103,16 @@ static void q36_sn_capture(Model *m,const float *x,const int *ids,int S,int pos)
             if (fprintf(g_sn_trace,"]}\n")<0 || fflush(g_sn_trace)) { fprintf(stderr,"[strata] trace write failed\n"); exit(1); }
         }
     }
+}
+static void q36_sn_publish_logits(Model *m,const float *logit,int S,int nlogits,int pos) {
+    if (!g_sn_base || !logit || S < 1 || nlogits < 1 || nlogits > S) return;
+    /* Verify row zero is the committed frontier; later rows remain speculative.
+     * A plain prefill/step captures its last row and its matching last logits. */
+    int verify = g_sn_capture_rows == S;
+    if (verify && nlogits != S) { g_sn_base_valid = 0; return; }
+    int row = verify ? 0 : nlogits - 1;
+    memcpy(g_sn_base,logit+(size_t)row*m->c.vocab,(size_t)m->c.vocab*sizeof(float));
+    g_sn_base_pos = verify ? pos : pos+S-1;
+    g_sn_base_valid = 1;
 }
 #endif

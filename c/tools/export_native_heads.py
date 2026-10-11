@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export existing trained JSON heads to bounded, fingerprinted CSNH v1.
+"""Export trained ordinary/residual heads to bounded fingerprinted CSNH v1/v2.
 
 No weights are trained or fabricated here. True signed CSQ1 INT4/8/16 source
 storage is decoded once by the native loader for F32 CPU proposal computation.
@@ -22,6 +22,7 @@ import precision
 MAX_FILE_BYTES = 512 * 1024 * 1024
 MODEL_TAG = b"CSNH-model-v1\0"
 AUGMENTED_TAP = "final-rmsnorm+next-embedding/v1"
+RESIDUAL_SCHEMA = "colibri.strata.logit-residual-heads/v1"
 
 
 def _augmented_tap(runtime_precision):
@@ -131,8 +132,8 @@ def fingerprint_info(model_dir, runtime_precision):
     return result
 
 
-def export_pack(pack, model_dir, runtime_precision, bits=4, block_values=64):
-    identity = heads.validate_pack(pack)
+def _native_identity(identity, model_dir, runtime_precision):
+    identity = heads.identity(identity)
     native = fingerprint_info(model_dir, runtime_precision)
     heads.require(identity.get("native_fingerprint") == native["fingerprint"],
                   "head native_fingerprint must match actual native model bytes, precision and tap")
@@ -147,17 +148,68 @@ def export_pack(pack, model_dir, runtime_precision, bits=4, block_values=64):
         heads.require(identity["hidden_tap"] == native["hidden_tap"], "head hidden tap differs from augmented native tap")
     else:
         heads.require(identity["hidden_tap"] != AUGMENTED_TAP, "augmented head tap requires augmented runtime precision")
-    heads.require([head["future_offset"] for head in pack["heads"]] == list(range(2, len(pack["heads"]) + 2)), "native head offsets must be contiguous from 2")
+    return identity, native
+
+
+def _serialize(identity, native, records, bits, kind, block_values=64, encoded=False):
+    heads.require(type(bits) is int and bits in (4, 8, 16), "bits must be 4,8,16")
+    heads.require(isinstance(records, list) and 1 <= len(records) <= 8, "head count must be in 1..8")
+    heads.require(all(isinstance(head, dict) for head in records), "head records must be objects")
+    for head in records:
+        heads.positive_int(head.get("future_offset"), "future_offset", 9)
+    heads.require([head.get("future_offset") for head in records] == list(range(2, len(records) + 2)),
+                  "native head offsets must be contiguous from 2")
     payload = bytearray()
-    for head in pack["heads"]:
-        down = precision.encode(head["down"], bits, block_values)
-        up = precision.encode(head["up"], bits, block_values)
+    decoded_bytes = 0
+    for head in records:
+        rank = heads.positive_int(head.get("rank"), "rank", 4096)
+        dimensions = {"down": rank * identity["hidden_size"], "up": rank * identity["vocab_size"]}
+        decoded_bytes += (sum(dimensions.values()) + identity["vocab_size"]) * 4
+        heads.require(decoded_bytes <= MAX_FILE_BYTES, "decoded head weights exceed 512 MiB")
+        if encoded:
+            for key, count in dimensions.items():
+                blob = head.get(key)
+                heads.require(isinstance(blob, bytes) and len(blob) <= MAX_FILE_BYTES, "encoded weight must be bounded bytes")
+                info, _ = precision.decode(blob)
+                heads.require(info["bits"] == bits and info["count"] == count, "encoded weight dimensions/precision differ")
+            down, up = head["down"], head["up"]
+        else:
+            down = precision.encode(head["down"], bits, block_values)
+            up = precision.encode(head["up"], bits, block_values)
+        heads.require(isinstance(head.get("bias"), list) and len(head["bias"]) == identity["vocab_size"], "wrong bias dimensions")
         bias = b"".join(struct.pack("<f", precision.f32(v)) for v in head["bias"])
         payload.extend(struct.pack("<IIQQII", head["future_offset"], head["rank"], len(down), len(up), len(head["bias"]), 0))
         payload.extend(down); payload.extend(up); payload.extend(bias)
         heads.require(96 + len(payload) <= MAX_FILE_BYTES, "native head pack exceeds 512 MiB")
-    header = struct.pack("<4s7I", b"CSNH", 1, 96, identity["hidden_size"], identity["vocab_size"], len(pack["heads"]), bits, 0)
+    version, tag = (1, 0) if kind == "ordinary" else (2, 1)
+    header = struct.pack("<4s7I", b"CSNH", version, 96, identity["hidden_size"], identity["vocab_size"], len(records), bits, tag)
     return header + bytes.fromhex(native["fingerprint"]) + hashlib.sha256(payload).digest() + bytes(payload)
+
+
+def export_pack(pack, model_dir, runtime_precision, bits=4, block_values=64, *, kind="ordinary"):
+    heads.require(kind in ("ordinary", "logit-residual"), "invalid bank kind")
+    if kind == "ordinary":
+        heads.require(isinstance(pack, dict) and pack.get("kind", "ordinary") == "ordinary", "residual pack requires explicit residual export")
+        identity = heads.validate_pack(pack)
+    else:
+        heads.require(isinstance(pack, dict) and pack.get("schema") == RESIDUAL_SCHEMA and
+                      pack.get("kind") == "logit-residual", "residual export requires tagged residual schema/kind")
+        # Reuse dimension/finite/identity validation without allowing an
+        # ordinary caller to reinterpret a residual schema as v1 weights.
+        identity = heads.validate_pack({**pack, "schema": heads.PACK_SCHEMA})
+    identity, native = _native_identity(identity, model_dir, runtime_precision)
+    return _serialize(identity, native, pack["heads"], bits, kind, block_values)
+
+
+def export_encoded_residual(identity, encoded_heads, model_dir, runtime_precision, bits=8):
+    """Explicit v2 export of canonical borrowed CSQ1 blobs + finite F32 biases.
+
+    Records use future_offset/rank/down(bytes)/up(bytes)/bias(list). Every blob
+    is strictly decoded/validated before publication. Existing codec bytes are
+    retained exactly; this API cannot produce an ordinary v1 scorer.
+    """
+    identity, native = _native_identity(identity, model_dir, runtime_precision)
+    return _serialize(identity, native, encoded_heads, bits, "logit-residual", encoded=True)
 
 
 def main(argv=None):
@@ -169,6 +221,7 @@ def main(argv=None):
     parser.add_argument("--output", type=Path)
     parser.add_argument("--bits", type=int, choices=(4, 8, 16), default=4)
     parser.add_argument("--block-values", type=int, default=64)
+    parser.add_argument("--bank-kind", choices=("ordinary", "logit-residual"), default="ordinary")
     args = parser.parse_args(argv)
     try:
         if args.fingerprint_only:
@@ -178,11 +231,12 @@ def main(argv=None):
         output = args.output.resolve()
         protected = {path.resolve() for path in _model_files(args.model_dir)} | {args.pack.resolve()}
         heads.require(output not in protected, "output must not overwrite model assets or its source pack")
-        blob = export_pack(_json(args.pack), args.model_dir, args.runtime_precision, args.bits, args.block_values)
+        blob = export_pack(_json(args.pack), args.model_dir, args.runtime_precision, args.bits, args.block_values, kind=args.bank_kind)
         with output.open("xb") as stream:
             stream.write(blob)
         print(json.dumps({"output": str(args.output), "bytes": len(blob), "source_bits": args.bits,
-                          "compute": "F32 CPU proposals", "fingerprint": blob[32:64].hex()}))
+                          "compute": "F32 CPU proposals", "bank_kind": args.bank_kind,
+                          "version": struct.unpack_from("<I", blob, 4)[0], "fingerprint": blob[32:64].hex()}))
         return 0
     except (OSError, ValueError, TypeError) as exc:
         print(str(exc), file=sys.stderr)

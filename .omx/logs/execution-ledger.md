@@ -130,3 +130,31 @@
   generateddependencies8 and finalloader/kernelASan+UBSan. IndependentCPUreview
   approved. Tested native adapter and curated comparison ready for publication;
   overall all-family/device/throughput objective remains incomplete.
+
+- User clarified that parallel future-token drafting remains the requirement;
+  requested source is robertkarl/UnbiasedStrata. Its sequential MTP is excluded.
+  Two CPU ports now share prepared activations/projection dispatch and INT8
+  weight-block/sign work across verification rows inside Colibri.
+- Real isolated15-pair studies: allports1.0129 median paired decode ratio,
+  row1.0047,group1.0028; existing rank16 bank0.9779 (slower). All12 separate
+  numeric output checks matched. Curated public evidence retains hashes and
+  all measured pairs. OptionalwideS1 remains defaultoff; no model speed claim.
+- Independent residual-head prototype preserves native raw-logit anchor and
+  adds trained horizon-specific low-rank deltas, without head-to-head inputs.
+  INT8sourceheldout69/279 and20/276,both10/279,meanprefix .28315; F16factor
+  scores agree within1.34e-5. CSNHv2 explicitly distinguishes residualbanks;
+  v1 APIs refuse them. Root caches raw logits before sampling and keeps them
+  paired with accepted hiddenfrontier. Focused C and sanitizer gates pass.
+  Live-target residualfrontier gates and freshprompttiming still running.
+- Final CSNHv2 scorer/exporter/cache review approved;13interoptests and six
+  native captured reference replays passed in scalar/parallel/sanitizer modes.
+  Live residual first/mid rejection,fullaccept/newproposal,budget,pin,sampling,
+  EOS,cancellation/postcancelcontinuation and precision refusals all passed.
+  Combined native gate8C+62Python; dependency8 andVKlink2 passed. macOSmkdtemp
+  feature declaration fixed; prior CPUfixtures now explicitly undefineVulkan.
+- Fresh three-prompt15-pair studies complete with model/binary/bank hashes
+  unchanged and exact numeric correctness. CPUports pairedmedian1.0331;
+  residualheads isolated0.9706 (2.9%slower). One timed repeat perprompt yields
+  gate-selected offset2accepted3/31,offset3neverjudged. This is a smallselected
+  sample, not fulltraceaccuracy. Public evidence retains allpairs/counters;
+  heads remain opt-in. Overall all-family/device throughput goal incomplete.

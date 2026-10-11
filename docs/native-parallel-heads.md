@@ -8,6 +8,12 @@ rejected rows are rolled back without replaying accepted tokens.
 
 This is an experimental adapter, not a claim of faster inference or coverage of
 every model. Other native families and device execution are still pending.
+An isolated measurement of the current rank16 bank against the same optimized
+engine found a **0.9779 median paired decode ratio (2.2% slower)**. Its held-out
+offset2/3 accuracy is 12.9%/8.0%; both match on 3.2% of shared states. These heads
+preserve output through target verification, but do not yet deliver useful
+acceleration. [Isolated measurements](../experimental/strata/results/unbiased-cpu-optimizations.json)
+
 The first hidden-only learned head preserved held-out token IDs/log probabilities
 but measured a median paired decode ratio of **0.975** on three held-out prompts
 with five paired repeats each. It was slower.
@@ -39,6 +45,52 @@ AVX2 where available and a scalar fallback. A prediction bank is called once
 even when the gate chooses a shorter prefix; its entire cost is charged once.
 The gate measures target batch cost and conditional acceptance by offset, and
 can select a plain target step when speculation loses time.
+
+## Independent cached-logit residual heads
+
+CSNH v2 banks can retain the target's existing raw output scores and add a
+horizon-specific low-rank correction. For each head independently:
+
+```text
+features = [committed normalized hidden, embedding of target-selected token1]
+latent_j = DOWN_j @ features
+scores_j = raw_target_logits + UP_j @ latent_j + bias_j
+```
+
+Both heads share the same immutable raw target logits and features. Neither
+reads the other's prediction. This formulation reuses the pretrained output
+weights during training/factorization without a second full vocabulary
+projection at runtime. The native adapter owns a raw-logit copy before sampler
+mutation and retains the matching hidden/logit row after verifier acceptance;
+rejection, cancellation and conversation reset preserve the same frontier rule.
+
+The local rank24 INT8-source prototype improves offset2 accuracy to **69/279
+(24.7%)**, while offset3 remains **20/276 (7.2%)**. Both match on 10/279 states,
+giving a mean **0.283 accepted extra tokens** per attempt in the development
+split. Fitting used training-only rows; this separate split informed subsequent
+prototype selection, so runtime benchmarks use additional fresh prompts.
+[Quality and numeric evidence](../experimental/strata/results/residual-head-quality.json)
+These accuracy figures alone do not establish acceleration.
+
+The fresh three-prompt,15-pair native trial gives a **0.9706 median paired
+decode ratio (2.9% slower)** with these heads enabled. All separate greedy
+numeric checks match. In one timed run per prompt, the parallel gate judged
+14/6/11 first-extra-token guesses and accepted 1/0/2: **3/31** across the three
+requests. No third-token head was judged in those runs. This is a small,
+gate-selected sample, not an unbiased full-trace accuracy estimate. Its lower
+acceptance and the bank/verification cost explain why improved development
+accuracy has not yielded runtime acceleration. Heads remain opt-in.
+[Fresh paired measurements and actual bank counters](../experimental/strata/results/residual-fresh-cpu-comparison.json)
+[Real-model frontier correctness](../experimental/strata/results/residual-frontier-correctness.json)
+
+Format/API selection is explicit: `(version,kind)=(1,0)` uses ordinary scores;
+`(2,1)` requires cached-logit residual scores. Ordinary prediction APIs refuse
+residual banks and vice versa. The existing `sn_info` C/ctypes layout remains
+unchanged. Both formats validate signed INT4/8/16 source storage, identity,
+finite values and bounded allocation; proposal computation remains F32 CPU
+with double dot accumulation. Export tagged residual JSON packs using
+`c/tools/export_native_heads.py --bank-kind logit-residual`; ordinary packs
+cannot be silently reinterpreted as residual banks.
 
 The CPU output projection batches all verified rows where the arithmetic is
 byte-identical to the old rowwise implementation. Packed INT4, AMX and device

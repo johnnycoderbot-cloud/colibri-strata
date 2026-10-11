@@ -6,6 +6,9 @@
 #ifdef COLI_CUDA
 #undef COLI_CUDA
 #endif
+#ifdef COLI_VULKAN
+#undef COLI_VULKAN
+#endif
 #define main qwen36_main_unused
 #include "../qwen36.c"
 #undef main

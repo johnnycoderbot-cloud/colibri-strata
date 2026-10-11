@@ -19,6 +19,7 @@ from pathlib import Path
 import queue
 import re
 import subprocess
+import struct
 import sys
 import time
 
@@ -36,6 +37,11 @@ EOS_PROMPT = ("<|im_start|>user\nAnswer with exactly these three words and no pu
 CONTINUATION = (b"<|im_end|>\n<|im_start|>user\nExplain the time complexity of binary search."
                 b"<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n")
 STATS = re.compile(r"\[qwen36 strata\] turn (\S+?)(?: cancelled)?: (.*)")
+RESIDUAL_SCHEMA = "colibri.strata.logit-residual-heads/v1"
+RESIDUAL_FIXTURE_BIAS = 1e6
+CASE_NAMES = ("first-reject", "middle-reject", "full-accept-next-proposal",
+              "budget-clipped-verify", "prefix-pin-restore", "sample-fallback",
+              "cancel-mid-verify", "precision-refusal", "eos-mid-verify")
 
 
 def require(condition, message):
@@ -58,6 +64,7 @@ class Driver:
         self.trace = args.work / (label + ".jsonl") if capture else None
         env = {"COLI_PREFIX_LOG": "1", "COLI_SPEC_GATE": "0",
                "COLI_STRATA_INPUT": "next-embedding", "COLI_LOOKUP": "0",
+               "COLI_STRATA_HEADS": "", "COLI_STRATA_TRACE": "", "COLI_LOOKUP_FORCE": "",
                "COLI_CUDA": "0", "COLI_VULKAN": "0"}
         if bank:
             env["COLI_STRATA_HEADS"] = linux_path(bank) if args.wsl else str(bank)
@@ -99,11 +106,13 @@ class Driver:
                     cancelled = True
             elif fields[0] == b"ERROR":
                 require(cancelled and fields[2:] == [b"CANCELLED"], line.decode("utf-8", "replace"))
-                return {"id": rid, "ids": ids, "frames": frames, "body": b"".join(bodies), "cancelled": True}
+                return {"id": rid, "ids": ids, "frames": frames, "body": b"".join(bodies), "cancelled": True,
+                        "token_ids_verified": temperature == 0}
             elif fields[0] == b"DONE":
                 require(not cancelled, "cancellation arrived after the request finished")
                 require(fields[2] == b"STAT" and int(fields[3]) == len(ids), "bad DONE token accounting")
-                return {"id": rid, "ids": ids, "frames": frames, "body": b"".join(bodies), "cancelled": False}
+                return {"id": rid, "ids": ids, "frames": frames, "body": b"".join(bodies), "cancelled": False,
+                        "token_ids_verified": temperature == 0}
 
     def close(self):
         self.engine.close()
@@ -160,20 +169,32 @@ def ended_ahead(driver, rid="frontier1", cancelled=False):
 
 def constant_bank(args, native, name, tokens):
     width, vocab = native["hidden_size"], native["vocab_size"]
+    require(args.bank_kind in ("ordinary", "logit-residual"), "unsupported fixture bank kind")
+    require(1 <= len(tokens) <= 8 and all(type(token) is int and 0 <= token < vocab for token in tokens),
+            "fixture needs 1..8 valid vocabulary token IDs")
+    residual = args.bank_kind == "logit-residual"
     identity = {"family": "qwen36", "checkpoint_revision": args.revision,
                 "tokenizer_sha256": native["tokenizer_sha256"], "native_fingerprint": native["fingerprint"],
                 "hidden_tap": exporter.AUGMENTED_TAP, "quantization": PRECISION,
                 "hidden_size": width, "vocab_size": vocab}
-    pack = {"schema": exporter.heads.PACK_SCHEMA, "identity": identity, "heads": [],
+    pack = {"schema": RESIDUAL_SCHEMA if residual else exporter.heads.PACK_SCHEMA, "identity": identity, "heads": [],
             "training": {"synthetic_correctness_fixture_only": True, "quality_validated": False}}
+    if residual:
+        pack["kind"] = "logit-residual"
+        pack["training"]["bias_policy"] = "finite +/-1e6 delta dominates ordinary target logits; correctness only"
     for index, token in enumerate(tokens):
-        bias = [0.0] * vocab
-        bias[token] = 1.0
+        bias = [-RESIDUAL_FIXTURE_BIAS if residual else 0.0] * vocab
+        bias[token] = RESIDUAL_FIXTURE_BIAS if residual else 1.0
         pack["heads"].append({"future_offset": index + 2, "rank": 1,
                               "down": [0.0] * width, "up": [0.0] * vocab, "bias": bias})
     path = args.work / (name + ".snh")
+    blob = exporter.export_pack(pack, args.model, PRECISION, bits=4, kind=args.bank_kind)
+    require(len(blob) >= 96, "exporter returned a truncated fixture bank")
+    header = struct.unpack_from("<4s7I", blob)
+    require(header[0] == b"CSNH" and (header[1], header[7]) == ((2, 1) if residual else (1, 0)),
+            "exported bank kind does not match the requested fixture mode")
     with path.open("xb") as stream:
-        stream.write(exporter.export_pack(pack, args.model, PRECISION, bits=4))
+        stream.write(blob)
     return path
 
 
@@ -203,7 +224,9 @@ def paired_case(args, name, bank, budget=10, continuation=False, pin=False, samp
     if sample:
         require("[strata] loaded" in feature.log, "sample fallback never loaded the test bank")
         require("[qwen36 strata]" not in feature.log, "sampled request executed unqualified head path")
-        return {"name": name, "tokens": len(b["ids"]), "frontier_rows": rows, "sample_fallback": True}
+        return {"name": name, "tokens": len(b["ids"]), "frontier_rows": rows, "sample_fallback": True,
+                "sample_token_ids_verified": False,
+                "sample_evidence_scope": "exact chosen logprob, top-token DATA, emitted bytes and hidden frontier; sampled chosen ID is absent from protocol"}
     values = stats(feature)
     require(values["bank_calls"] > 0 and values["failures"] == 0, "bank was inactive or failed")
     if name == "first-reject":
@@ -282,7 +305,7 @@ def precision_refusals(args, bank):
     return results
 
 
-def main():
+def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--engine", type=Path, required=True)
     parser.add_argument("--model", type=Path, required=True)
@@ -293,12 +316,26 @@ def main():
     parser.add_argument("--work", type=Path, required=True, help="NEW directory for correctness-only banks and traces")
     parser.add_argument("--output", type=Path, required=True, help="NEW report path")
     parser.add_argument("--cases", help="optional comma-separated subset; reports only selected coverage")
-    args = parser.parse_args()
+    parser.add_argument("--bank-kind", choices=("ordinary", "logit-residual"), default="ordinary",
+                        help="synthetic fixture bank format; residual uses finite +/-1e6 delta biases")
+    args = parser.parse_args(argv)
     require(1 <= args.threads <= 64 and 1 <= args.request_timeout <= 600, "invalid execution bounds")
     require(re.fullmatch(r"[0-9a-f]{40}", args.revision), "revision must be 40 lowercase hex digits")
+    require(not os.path.lexists(args.work) and not os.path.lexists(args.output), "work directory and report must be new")
     args.engine, args.model, args.work, args.output = (p.resolve() for p in (args.engine, args.model, args.work, args.output))
     require(args.engine.is_file() and args.model.is_dir(), "native engine/model is absent")
-    require(not args.work.exists() and not args.output.exists(), "work directory and report must be new")
+    require(not os.path.lexists(args.work) and not os.path.lexists(args.output), "work directory and report must be new")
+    require(not args.work.is_relative_to(args.model) and not args.output.is_relative_to(args.model),
+            "work and report must be outside model assets")
+    selected = args.cases.split(",") if args.cases is not None else list(CASE_NAMES)
+    require(selected and len(selected) == len(set(selected)) and set(selected) <= set(CASE_NAMES),
+            "unknown, duplicate or empty case selection")
+    args.selected_cases = set(selected)
+    return args
+
+
+def main(argv=None):
+    args = parse_args(argv)
     args.work.mkdir(parents=True)
     started = time.monotonic()
     oracle = Driver(args, "oracle", capture=False)
@@ -317,11 +354,7 @@ def main():
     eos_id = config.get("text_config", config).get("eos_token_id")
     require(type(eos_id) is int and 0 <= eos_id < native["vocab_size"], "model lacks a scalar EOS token")
     eos = constant_bank(args, native, "constant-eos", [eos_id])
-    available_cases = {"first-reject", "middle-reject", "full-accept-next-proposal",
-                       "budget-clipped-verify", "prefix-pin-restore", "sample-fallback",
-                       "cancel-mid-verify", "precision-refusal", "eos-mid-verify"}
-    selected = set(args.cases.split(",")) if args.cases else available_cases
-    require(selected and selected <= available_cases, "unknown or empty case selection")
+    selected = args.selected_cases
     records = []
     for name, bank, options in (
         ("first-reject", reject, {"continuation": True}),
@@ -348,6 +381,10 @@ def main():
               "synthetic_correctness_fixtures_only": True, "performance_evidence": False,
               "engine_sha256": sha(args.engine), "native_fingerprint": native["fingerprint"],
               "runtime_precision": PRECISION, "oracle_ids": truth, "records": records,
+              "bank_kind": args.bank_kind, "bank_format": "CSNH v2/reserved=1" if args.bank_kind == "logit-residual" else "CSNH v1/reserved=0",
+              "fixture_bias": {"selected": RESIDUAL_FIXTURE_BIAS, "others": -RESIDUAL_FIXTURE_BIAS} if args.bank_kind == "logit-residual" else {"selected": 1.0, "others": 0.0},
+              "residual_fixture_scope": ("dominant synthetic deltas test transaction/frontier correctness; exact raw-anchor values require the separate C anchor gate"
+                                         if args.bank_kind == "logit-residual" else None),
               "selected_cases": sorted(selected),
               "elapsed_seconds": time.monotonic() - started}
     with args.output.open("x", encoding="utf-8") as stream:

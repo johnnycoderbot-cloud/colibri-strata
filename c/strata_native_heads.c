@@ -189,7 +189,7 @@ cleanup:
 
 typedef double (*sn_dot)(const float *,const float *,size_t);
 typedef struct {size_t rank,latent_start;float *down,*up,*bias;} sn_head;
-struct sn_bank {size_t hidden,vocab,count,total_rank,decoded;unsigned bits;sn_dot dot;const char *kernel;sn_head heads[SN_MAX_HEADS];};
+struct sn_bank {size_t hidden,vocab,count,total_rank,decoded;unsigned bits;sn_kind kind;sn_dot dot;const char *kernel;sn_head heads[SN_MAX_HEADS];};
 static double sn_dot_scalar(const float *a,const float *b,size_t n){size_t i;double sum=0;for(i=0;i<n;i++)sum+=(double)a[i]*b[i];return sum;}
 #ifdef SN_HAVE_AVX2
 __attribute__((target("avx2"))) static double sn_dot_avx2(const float *a,const float *b,size_t n){
@@ -216,7 +216,9 @@ sn_status sn_open(const char *path,const uint8_t expected[32],size_t hidden,size
     if(length<SN_HEADER_BYTES||length>SN_MAX_FILE_BYTES){fclose(file);return SN_LIMIT;}
     bytes=malloc((size_t)length);if(!bytes){fclose(file);return SN_NOMEM;}
     if(fread(bytes,1,(size_t)length,file)!=(size_t)length||fgetc(file)!=EOF||ferror(file)){fclose(file);free(bytes);return SN_IO;}fclose(file);
-    if(memcmp(bytes,"CSNH",4)||sn_u32(bytes+4)!=1||sn_u32(bytes+8)!=SN_HEADER_BYTES||sn_u32(bytes+28))goto done;
+    if(memcmp(bytes,"CSNH",4)||sn_u32(bytes+8)!=SN_HEADER_BYTES)goto done;
+    if(!((sn_u32(bytes+4)==1&&sn_u32(bytes+28)==SN_KIND_ORDINARY)||
+         (sn_u32(bytes+4)==2&&sn_u32(bytes+28)==SN_KIND_LOGIT_RESIDUAL)))goto done;
     if(memcmp(bytes+32,expected,32)){status=SN_IDENTITY;goto done;}
     if(sn_u32(bytes+12)!=hidden||sn_u32(bytes+16)!=vocab){status=SN_DIMENSIONS;goto done;}
     if(!sn_u32(bytes+20)||sn_u32(bytes+20)>SN_MAX_HEADS){status=SN_LIMIT;goto done;}
@@ -225,6 +227,7 @@ sn_status sn_open(const char *path,const uint8_t expected[32],size_t hidden,size
     if(memcmp(bytes+64,digest,32))goto done;
     bank=calloc(1,sizeof(*bank));if(!bank){status=SN_NOMEM;goto done;}
     bank->hidden=hidden;bank->vocab=vocab;bank->count=sn_u32(bytes+20);bank->bits=sn_u32(bytes+24);
+    bank->kind=(sn_kind)sn_u32(bytes+28);
     bank->dot=sn_dot_scalar;bank->kernel="scalar";
 #ifdef SN_HAVE_AVX2
     __builtin_cpu_init();if(__builtin_cpu_supports("avx2")){bank->dot=sn_dot_avx2;bank->kernel="avx2";}
@@ -268,14 +271,20 @@ done:sn_close(bank);free(bytes);return status;
 sn_status sn_get_info(const sn_bank *bank,sn_info *out){sn_info info;if(!bank||!out)return SN_INVALID;
     info.hidden_dim=bank->hidden;info.vocab_size=bank->vocab;info.head_count=bank->count;info.decoded_bytes=bank->decoded;
     info.source_bits=bank->bits;info.kernel=bank->kernel;*out=info;return SN_OK;}
-sn_status sn_predict_sized(const sn_bank *bank,const float *hidden,size_t n,int *out,size_t capacity,int parallel){
+sn_kind sn_bank_kind(const sn_bank *bank){return bank?bank->kind:SN_KIND_INVALID;}
+static sn_status sn_predict_impl(const sn_bank *bank,const float *hidden,size_t n,
+                                 const float *base,size_t base_count,int *out,
+                                 size_t capacity,int parallel,sn_kind kind){
     float latent[SN_MAX_HEADS*SN_MAX_RANK],best[SN_MAX_HEADS];int tokens[SN_MAX_HEADS],seen[SN_MAX_HEADS]={0};
     size_t i;int error=0;
-    if(!bank||!hidden||!out)return SN_INVALID;
-    if(n!=bank->hidden||capacity<bank->count)return SN_DIMENSIONS;
-    if(n>SIZE_MAX/sizeof(float))return SN_OVERFLOW;
+    if(!bank||bank->kind!=kind||!hidden||!out||(kind==SN_KIND_LOGIT_RESIDUAL&&!base))return SN_INVALID;
+    if(n!=bank->hidden||capacity<bank->count||
+       (kind==SN_KIND_LOGIT_RESIDUAL&&base_count!=bank->vocab))return SN_DIMENSIONS;
+    if(n>SIZE_MAX/sizeof(float)||base_count>SIZE_MAX/sizeof(float))return SN_OVERFLOW;
     if(coli_strata_overlap_(hidden,n*sizeof(float),out,bank->count*sizeof(int)))return SN_INVALID;
+    if(base&&coli_strata_overlap_(base,base_count*sizeof(float),out,bank->count*sizeof(int)))return SN_INVALID;
     for(i=0;i<n;i++)if(!isfinite(hidden[i]))return SN_NONFINITE;
+    for(i=0;i<base_count;i++)if(!isfinite(base[i]))return SN_NONFINITE;
 #ifndef _OPENMP
     (void)parallel;
 #else
@@ -304,6 +313,7 @@ sn_status sn_predict_sized(const sn_bank *bank,const float *hidden,size_t n,int 
             for(task=0;task<bank->count*bank->vocab;task++){
                 size_t v=task%bank->vocab;double value;float score;h=task/bank->vocab;
                 value=bank->dot(bank->heads[h].up+v*bank->heads[h].rank,latent+bank->heads[h].latent_start,bank->heads[h].rank)+(double)bank->heads[h].bias[v];
+                if(base)value+=(double)base[v];
                 if(!isfinite(value)||value>FLT_MAX||value<-FLT_MAX){local_error=1;continue;}
                 score=(float)value;
                 if(!local_seen[h]||score>local_best[h]||(score==local_best[h]&&(int)v<local_token[h])){
@@ -322,7 +332,17 @@ sn_status sn_predict_sized(const sn_bank *bank,const float *hidden,size_t n,int 
     for(i=0;i<bank->count;i++)if(!seen[i])return SN_INVALID;
     memcpy(out,tokens,bank->count*sizeof(*out));return SN_OK;
 }
+sn_status sn_predict_sized(const sn_bank *bank,const float *hidden,size_t n,int *out,size_t capacity,int parallel){
+    return sn_predict_impl(bank,hidden,n,NULL,0,out,capacity,parallel,SN_KIND_ORDINARY);
+}
 sn_status sn_predict(const sn_bank *bank,const float *hidden,int *out){return bank?sn_predict_sized(bank,hidden,bank->hidden,out,bank->count,1):SN_INVALID;}
+sn_status sn_predict_residual_sized(const sn_bank *bank,const float *hidden,size_t n,
+                                   const float *base,size_t base_count,int *out,size_t capacity,int parallel){
+    return sn_predict_impl(bank,hidden,n,base,base_count,out,capacity,parallel,SN_KIND_LOGIT_RESIDUAL);
+}
+sn_status sn_predict_residual(const sn_bank *bank,const float *hidden,const float *base,int *out){
+    return bank?sn_predict_residual_sized(bank,hidden,bank->hidden,base,bank->vocab,out,bank->count,1):SN_INVALID;
+}
 const char *sn_status_string(sn_status s){switch(s){case SN_OK:return "ok";case SN_INVALID:return "invalid head pack or arguments";
     case SN_IO:return "head pack/model I/O failure";case SN_IDENTITY:return "head pack belongs to another model/precision";
     case SN_DIMENSIONS:return "head dimensions/capacity mismatch";case SN_LIMIT:return "head pack exceeds bounds";

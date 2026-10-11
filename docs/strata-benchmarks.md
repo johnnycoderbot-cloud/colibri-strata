@@ -1,5 +1,27 @@
 # Benchmark protocol
 
+The subsequent fresh-prompt trial confirms a small CPU-port gain: **1.0331
+median paired decode ratio**, with heads off. Per-prompt medians are 1.0331,
+1.0720 and 1.0044. The same binary with the new rank24 residual bank enabled
+measures **0.9706 (2.9% slower)**. Six separate greedy numeric correctness
+requests match. The three new requests differ from all training/development
+prompts; the other settings remain 8 threads, INT8/integer-dot, prompt lookup,
+64-token cap and five alternating pairs per prompt. Model/binary/bank hashes
+were stable. [Fresh measurements](../experimental/strata/results/residual-fresh-cpu-comparison.json)
+
+The earlier isolated CPU-port trial measures a **1.0129 median paired decode
+ratio** against unchanged Colibri with heads disabled. The three prompt-level
+median ratios are 1.0357, 1.0029 and 1.0019: a small workload-dependent gain,
+not a major or universal speedup. Shared activation/projection grouping and INT8
+verification-row weight reuse were tested separately; their paired medians are
+1.0028 and 1.0047. Turning on the existing rank16 parallel bank against the same
+optimized binary gives **0.9779**, slower. All twelve separate numeric correctness
+requests match. Same Qwen3.5-0.8B INT8/integer-dot target, 8 threads, three prompts,
+five alternating pairs each,64-token output cap, existing prompt lookup in every
+arm. Warm page cache; no isolated prefill duration is available.
+[Measurements and hashes](../experimental/strata/results/unbiased-cpu-optimizations.json)
+[Port scope and source](strata-cpu-ports.md)
+
 A real native comparison now exists, with **no clear repeatable speedup**:
 unchanged Colibri 39.829 vs the two-head CPU fork 39.471 median tokens/s across
 15 interleaved pairs, identical outputs. Both use Qwen3.5-0.8B, INT8/integer-dot,

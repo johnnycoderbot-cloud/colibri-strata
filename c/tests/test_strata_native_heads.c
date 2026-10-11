@@ -1,3 +1,6 @@
+#if defined(__APPLE__) && !defined(_DARWIN_C_SOURCE)
+#define _DARWIN_C_SOURCE 1
+#endif
 #define _POSIX_C_SOURCE 200809L
 #include "../strata_native_heads.h"
 #include <float.h>
@@ -67,6 +70,8 @@ static int pack_tests(const char *dir){uint8_t good[836],bad[837],fp[32],other[3
 #endif
     CHECK(sn_open(dir,fp,17,9,&rejected)==SN_IO&&!rejected);
     CHECK(sn_open(path,fp,17,9,&bank)==SN_OK);CHECK(bank);CHECK(sn_get_info(bank,&info)==SN_OK);
+    CHECK(sn_bank_kind(bank)==SN_KIND_ORDINARY&&sn_bank_kind(NULL)==SN_KIND_INVALID);
+    {float base[9]={0};CHECK(sn_predict_residual(bank,hidden,base,tokens)==SN_INVALID);}
     CHECK(info.hidden_dim==17&&info.vocab_size==9&&info.head_count==2&&info.source_bits==4&&info.decoded_bytes==3608);
     CHECK(!strcmp(info.kernel,"avx2")||!strcmp(info.kernel,"scalar"));
 #ifdef SN_FORCE_SCALAR
@@ -111,14 +116,113 @@ static int pack_tests(const char *dir){uint8_t good[836],bad[837],fp[32],other[3
     CHECK(sn_predict(bank,hidden,tokens)==SN_OK&&tokens[0]==8&&tokens[1]==1);
     sn_close(bank);sn_close(NULL);return 0;
 }
-int main(void){char directory[1024];int result;
+static int residual_tests(const char *dir){
+    uint8_t bytes[836],fp[32];char path[1024];sn_bank *bank=NULL,*rejected=NULL;
+    float h[17],base[9],before[9];int tokens[2],serial[2],i,mode;
+    unhex(bytes,good_hex,sizeof(bytes));memset(fp,17,32);bytes[4]=2;bytes[28]=1;
+    CHECK(path_for(path,dir,"bank.snh"));CHECK(write_file(dir,"bank.snh",bytes,sizeof(bytes)));
+    CHECK(sn_open(path,fp,17,9,&bank)==SN_OK&&sn_bank_kind(bank)==SN_KIND_LOGIT_RESIDUAL);
+    tokens[0]=111;tokens[1]=222;
+    CHECK(sn_predict(bank,h,tokens)==SN_INVALID);
+    CHECK(sn_predict_sized(bank,h,17,tokens,2,0)==SN_INVALID&&tokens[0]==111&&tokens[1]==222);
+    for(i=0;i<17;i++)h[i]=(float)i;
+    memset(base,0,sizeof(base));base[4]=100.f;memcpy(before,base,sizeof(base));
+    for(i=0;i<30;i++){
+        CHECK(sn_predict_residual_sized(bank,h,17,base,9,serial,2,0)==SN_OK);
+        CHECK(sn_predict_residual(bank,h,base,tokens)==SN_OK);
+        CHECK(tokens[0]==4&&tokens[1]==4&&!memcmp(serial,tokens,sizeof(tokens)));
+        CHECK(!memcmp(base,before,sizeof(base)));
+    }
+    memset(h,0,sizeof(h));memset(base,0,sizeof(base));
+    CHECK(sn_predict_residual(bank,h,base,tokens)==SN_OK&&tokens[0]==0&&tokens[1]==1);
+    base[0]=base[2]=10.f;
+    CHECK(sn_predict_residual(bank,h,base,tokens)==SN_OK&&tokens[0]==0&&tokens[1]==1);
+    tokens[0]=111;tokens[1]=222;
+    CHECK(sn_predict_residual_sized(bank,h,17,base,8,tokens,2,1)==SN_DIMENSIONS);
+    CHECK(sn_predict_residual_sized(bank,h,17,base,10,tokens,2,1)==SN_DIMENSIONS);
+    CHECK(sn_predict_residual_sized(bank,h,16,base,9,tokens,2,1)==SN_DIMENSIONS);
+    CHECK(sn_predict_residual_sized(bank,h,17,base,9,tokens,1,1)==SN_DIMENSIONS);
+    CHECK(sn_predict_residual(bank,h,NULL,tokens)==SN_INVALID);
+    CHECK(sn_predict_residual(bank,h,base,(int *)h)==SN_INVALID);
+    CHECK(sn_predict_residual(bank,h,base,(int *)(base+3))==SN_INVALID);
+    CHECK(tokens[0]==111&&tokens[1]==222);
+    for(i=0;i<9;i++){
+        float old=base[i];base[i]=NAN;
+        CHECK(sn_predict_residual(bank,h,base,tokens)==SN_NONFINITE);
+        CHECK(tokens[0]==111&&tokens[1]==222);base[i]=old;
+    }
+    base[8]=INFINITY;CHECK(sn_predict_residual(bank,h,base,tokens)==SN_NONFINITE);base[8]=0;
+    h[16]=NAN;CHECK(sn_predict_residual(bank,h,base,tokens)==SN_NONFINITE);h[16]=0;
+    h[0]=FLT_MAX;base[0]=FLT_MAX;
+    for(mode=0;mode<=1;mode++){
+        CHECK(sn_predict_residual_sized(bank,h,17,base,9,tokens,2,mode)==SN_OVERFLOW);
+        CHECK(tokens[0]==111&&tokens[1]==222);
+    }
+    sn_close(bank);bank=NULL;
+    /* Failure in only the last head cannot publish the first head's result.
+     * Independent SHA from hashlib: second head's token1 bias is FLT_MAX. */
+    bytes[804]=0xff;bytes[805]=0xff;bytes[806]=0x7f;bytes[807]=0x7f;
+    unhex(bytes+64,"0d729d29cfdb635d0ef947e11b92cba9346ee58a94115dfc7b9857309f1c0495",32);
+    CHECK(write_file(dir,"bank.snh",bytes,sizeof(bytes)));
+    CHECK(sn_open(path,fp,17,9,&bank)==SN_OK);
+    memset(h,0,sizeof(h));memset(base,0,sizeof(base));base[1]=FLT_MAX;
+    for(mode=0;mode<=1;mode++){
+        CHECK(sn_predict_residual_sized(bank,h,17,base,9,tokens,2,mode)==SN_OVERFLOW);
+        CHECK(tokens[0]==111&&tokens[1]==222);
+    }
+    /* No premature F32 rounding: an above-F32 delta can be cancelled by the
+     * finite negative base before the final checked score conversion. */
+    h[1]=FLT_MAX;base[1]=-FLT_MAX;
+    CHECK(sn_predict_residual(bank,h,base,tokens)==SN_OK&&tokens[0]==0&&tokens[1]==1);
+    sn_close(bank);bank=NULL;
+    /* All version/kind pairings except (1,0),(2,1) must refuse before publish. */
+    {const unsigned versions[]={1,2,2,3};const unsigned kinds[]={1,0,2,1};
+     for(i=0;i<4;i++){
+        bytes[4]=(uint8_t)versions[i];bytes[28]=(uint8_t)kinds[i];
+        CHECK(write_file(dir,"bank.snh",bytes,sizeof(bytes)));
+        CHECK(sn_open(path,fp,17,9,&rejected)==SN_INVALID&&!rejected);
+     }}
+    return 0;
+}
+static int replay_u32(FILE *f,uint32_t *out){uint8_t b[4];
+    if(fread(b,1,4,f)!=4)return 0;
+    *out=(uint32_t)b[0]|(uint32_t)b[1]<<8|(uint32_t)b[2]<<16|(uint32_t)b[3]<<24;return 1;
+}
+static int replay_floats(FILE *f,float *out,size_t count){size_t i;uint32_t bits;
+    for(i=0;i<count;i++){if(!replay_u32(f,&bits))return 0;memcpy(out+i,&bits,4);}return 1;
+}
+static int residual_replay(const char *pack_path,const char *fixture){
+    FILE *f=fopen(fixture,"rb");uint8_t magic[4],fp[32];uint32_t version,H,V,N,K,i,j,word;
+    sn_bank *bank=NULL;sn_info info;float *hidden,*base;int tokens[SN_MAX_HEADS],expected[SN_MAX_HEADS],mode;
+    CHECK(f);CHECK(fread(magic,1,4,f)==4&&!memcmp(magic,"CSRF",4));
+    CHECK(replay_u32(f,&version)&&version==1&&replay_u32(f,&H)&&replay_u32(f,&V)&&replay_u32(f,&N)&&replay_u32(f,&K));
+    CHECK(H&&H<=32768&&V&&V<=1048576&&N&&N<=1024&&K&&K<=SN_MAX_HEADS);
+    CHECK((uint64_t)N*((uint64_t)H+V+K)*4<=SN_MAX_FILE_BYTES);
+    CHECK(fread(fp,1,32,f)==32);CHECK(sn_open(pack_path,fp,H,V,&bank)==SN_OK);
+    CHECK(sn_bank_kind(bank)==SN_KIND_LOGIT_RESIDUAL&&sn_get_info(bank,&info)==SN_OK&&info.head_count==K);
+    hidden=malloc((size_t)H*sizeof(float));base=malloc((size_t)V*sizeof(float));CHECK(hidden&&base);
+    for(i=0;i<N;i++){
+        CHECK(replay_floats(f,hidden,H)&&replay_floats(f,base,V));
+        for(j=0;j<K;j++){CHECK(replay_u32(f,&word)&&word<V);expected[j]=(int)word;}
+        for(mode=0;mode<=1;mode++){
+            for(j=0;j<K;j++)tokens[j]=-9;
+            CHECK(sn_predict_sized(bank,hidden,H,tokens,K,mode)==SN_INVALID);
+            CHECK(sn_predict_residual_sized(bank,hidden,H,base,V,tokens,K,mode)==SN_OK);
+            CHECK(!memcmp(tokens,expected,(size_t)K*sizeof(int)));
+        }
+    }
+    CHECK(fgetc(f)==EOF&&!ferror(f));fclose(f);free(hidden);free(base);sn_close(bank);
+    printf("native residual replay: %u captured rows, scalar/OpenMP predictions match reference\n",N);return 0;
+}
+int main(int argc,char **argv){char directory[1024];int result;
+    if(argc==4&&!strcmp(argv[1],"--residual-replay"))return residual_replay(argv[2],argv[3]);
 #ifdef _WIN32
     char temp[MAX_PATH];CHECK(GetTempPathA(MAX_PATH,temp));CHECK(GetTempFileNameA(temp,"snh",0,directory));
     CHECK(DeleteFileA(directory));CHECK(!_mkdir(directory));
 #else
     strcpy(directory,"/tmp/strata-native-heads-XXXXXX");CHECK(mkdtemp(directory));
 #endif
-    result=fingerprint_tests(directory)||pack_tests(directory);cleanup(directory);
+    result=fingerprint_tests(directory)||pack_tests(directory)||residual_tests(directory);cleanup(directory);
     if(!result)puts("native heads: identity, tamper, canonical storage, transactional AVX/scalar/parallel tests passed");
     return result;
 }

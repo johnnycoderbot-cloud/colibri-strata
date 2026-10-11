@@ -208,6 +208,129 @@ static inline int32_t dot_i8i8(const int8_t *w, const int8_t *x, int I){
     return sum;
 }
 
+/* Optional single-row AVX-VNNI port: four independent 256-bit accumulators
+ * consume 128 bytes per iteration. Strata's wide integer-dot scheduling is
+ * adapted to Colibri's signed-weight/activation contract; no weight/layout or
+ * activation-rounding change. The final <32 bytes retain the original 16-byte
+ * vector/scalar boundary, including its legacy behavior for x=-128. */
+static inline int32_t dot_i8i8_wide(const int8_t *w, const int8_t *x, int I){
+#if defined(__AVXVNNI__) && defined(__AVX2__) && !defined(__AVX512VNNI__)
+    __m256i a0=_mm256_setzero_si256(),a1=a0,a2=a0,a3=a0;
+    int i=0;
+    for(;I-i>=128;i+=128){
+        __m256i w0=_mm256_loadu_si256((const __m256i*)(w+i));
+        __m256i w1=_mm256_loadu_si256((const __m256i*)(w+i+32));
+        __m256i w2=_mm256_loadu_si256((const __m256i*)(w+i+64));
+        __m256i w3=_mm256_loadu_si256((const __m256i*)(w+i+96));
+        a0=_mm256_dpbusd_avx_epi32(a0,_mm256_abs_epi8(w0),
+                                      _mm256_sign_epi8(_mm256_loadu_si256((const __m256i*)(x+i)),w0));
+        a1=_mm256_dpbusd_avx_epi32(a1,_mm256_abs_epi8(w1),
+                                      _mm256_sign_epi8(_mm256_loadu_si256((const __m256i*)(x+i+32)),w1));
+        a2=_mm256_dpbusd_avx_epi32(a2,_mm256_abs_epi8(w2),
+                                      _mm256_sign_epi8(_mm256_loadu_si256((const __m256i*)(x+i+64)),w2));
+        a3=_mm256_dpbusd_avx_epi32(a3,_mm256_abs_epi8(w3),
+                                      _mm256_sign_epi8(_mm256_loadu_si256((const __m256i*)(x+i+96)),w3));
+    }
+    __m256i acc=_mm256_add_epi32(_mm256_add_epi32(a0,a1),_mm256_add_epi32(a2,a3));
+    for(;I-i>=32;i+=32){
+        __m256i wv=_mm256_loadu_si256((const __m256i*)(w+i));
+        acc=_mm256_dpbusd_avx_epi32(acc,_mm256_abs_epi8(wv),
+                                      _mm256_sign_epi8(_mm256_loadu_si256((const __m256i*)(x+i)),wv));
+    }
+    return (int32_t)((uint32_t)hsum256_i32(acc) + (uint32_t)dot_i8i8(w+i,x+i,I-i));
+#else
+    return dot_i8i8(w,x,I);
+#endif
+}
+
+/* Explicit opt-in until large-matrix and actual-model timing qualify it.
+ * Read once before a single-row matmul's thread team, never in the dot loop;
+ * no mutable feature cache and no change to S>=2 row-tile selection. */
+static inline int idot_wide_on(void){
+#if defined(__AVXVNNI__) && defined(__AVX2__) && !defined(__AVX512VNNI__)
+    const char *value=getenv("COLI_IDOT_WIDE");
+    return value && *value=='1';
+#else
+    return 0;
+#endif
+}
+
+/* One immutable weight row against 1..4 immutable activation rows. stride is
+ * in int8 elements and must be >= I; out[0..nrows-1] alone is written. The x86
+ * tile prepares each weight/sign block once. Legacy dot_i8i8 semantics are
+ * preserved even for x=-128 (outside qrow_i8's ordinary [-127,127] contract),
+ * and the legacy kernel owns any final vector/scalar remainder. */
+static inline void dot_i8i8_rows(const int8_t *w, const int8_t *x, int I,
+                                int stride, int nrows, int32_t out[4]){
+    if(nrows==1){ out[0]=dot_i8i8(w,x,I); return; }
+#if defined(__AVX2__) && !(defined(__AVX512VNNI__) && defined(__AVX512BW__))
+    const __m256i ones=_mm256_set1_epi16(1);
+#if defined(__AVXVNNI__)
+    (void)ones;
+#define IDOT_ROW_ACC(A,W,WA,X) _mm256_dpbusd_avx_epi32((A),(WA),_mm256_sign_epi8((X),(W)))
+#else
+#define IDOT_ROW_ACC(A,W,WA,X) _mm256_add_epi32((A),_mm256_madd_epi16(_mm256_maddubs_epi16((WA),_mm256_sign_epi8((X),(W))),ones))
+#endif
+    /* Literal N permits register allocation for exactly 2,3,4 rows, without
+     * accumulator-array spills or a variable-row loop inside the hot loop. */
+#define IDOT_ROWS_TILE(N) do { \
+    __m256i a00=_mm256_setzero_si256(),a01=a00,a10=a00,a11=a00; \
+    __m256i a20=a00,a21=a00,a30=a00,a31=a00; int i=0; \
+    for(;i+64<=I;i+=64){ \
+        __m256i w0=_mm256_loadu_si256((const __m256i*)(w+i)); \
+        __m256i w1=_mm256_loadu_si256((const __m256i*)(w+i+32)); \
+        __m256i wa0=_mm256_abs_epi8(w0),wa1=_mm256_abs_epi8(w1); \
+        a00=IDOT_ROW_ACC(a00,w0,wa0,_mm256_loadu_si256((const __m256i*)(x+i))); \
+        a01=IDOT_ROW_ACC(a01,w1,wa1,_mm256_loadu_si256((const __m256i*)(x+i+32))); \
+        a10=IDOT_ROW_ACC(a10,w0,wa0,_mm256_loadu_si256((const __m256i*)(x+stride+i))); \
+        a11=IDOT_ROW_ACC(a11,w1,wa1,_mm256_loadu_si256((const __m256i*)(x+stride+i+32))); \
+        if((N)>2){ \
+            a20=IDOT_ROW_ACC(a20,w0,wa0,_mm256_loadu_si256((const __m256i*)(x+(int64_t)2*stride+i))); \
+            a21=IDOT_ROW_ACC(a21,w1,wa1,_mm256_loadu_si256((const __m256i*)(x+(int64_t)2*stride+i+32))); \
+        } \
+        if((N)>3){ \
+            a30=IDOT_ROW_ACC(a30,w0,wa0,_mm256_loadu_si256((const __m256i*)(x+(int64_t)3*stride+i))); \
+            a31=IDOT_ROW_ACC(a31,w1,wa1,_mm256_loadu_si256((const __m256i*)(x+(int64_t)3*stride+i+32))); \
+        } \
+    } \
+    a00=_mm256_add_epi32(a00,a01); a10=_mm256_add_epi32(a10,a11); \
+    if((N)>2) a20=_mm256_add_epi32(a20,a21); \
+    if((N)>3) a30=_mm256_add_epi32(a30,a31); \
+    if(i+32<=I){ \
+        __m256i w0=_mm256_loadu_si256((const __m256i*)(w+i)),wa0=_mm256_abs_epi8(w0); \
+        a00=IDOT_ROW_ACC(a00,w0,wa0,_mm256_loadu_si256((const __m256i*)(x+i))); \
+        a10=IDOT_ROW_ACC(a10,w0,wa0,_mm256_loadu_si256((const __m256i*)(x+stride+i))); \
+        if((N)>2) a20=IDOT_ROW_ACC(a20,w0,wa0,_mm256_loadu_si256((const __m256i*)(x+(int64_t)2*stride+i))); \
+        if((N)>3) a30=IDOT_ROW_ACC(a30,w0,wa0,_mm256_loadu_si256((const __m256i*)(x+(int64_t)3*stride+i))); \
+        i+=32; \
+    } \
+    out[0]=hsum256_i32(a00)+dot_i8i8(w+i,x+i,I-i); \
+    out[1]=hsum256_i32(a10)+dot_i8i8(w+i,x+stride+i,I-i); \
+    if((N)>2) out[2]=hsum256_i32(a20)+dot_i8i8(w+i,x+(int64_t)2*stride+i,I-i); \
+    if((N)>3) out[3]=hsum256_i32(a30)+dot_i8i8(w+i,x+(int64_t)3*stride+i,I-i); \
+    return; \
+} while(0)
+    if(nrows==2) IDOT_ROWS_TILE(2);
+    if(nrows==3) IDOT_ROWS_TILE(3);
+    if(nrows==4) IDOT_ROWS_TILE(4);
+#undef IDOT_ROWS_TILE
+#undef IDOT_ROW_ACC
+#endif
+    /* Scalar, ARM and unqualified AVX512 keep their established kernels. */
+    for(int r=0;r<nrows;r++) out[r]=dot_i8i8(w,x+(int64_t)r*stride,I);
+}
+
+/* Non-cached and read before the thread team: no mutable feature cache. S=1
+ * never consults the switch. Wider ISA qualification retains its old path. */
+static inline int idot_rows_on(void){
+#if defined(__AVX2__) && !(defined(__AVX512VNNI__) && defined(__AVX512BW__))
+    const char *value=getenv("COLI_IDOT_ROWS");
+    return !(value&&*value=='0');
+#else
+    return 0;
+#endif
+}
+
 /* dot int4(packed)*int8 */
 static inline int32_t dot_i4i8(const uint8_t *w4, const int8_t *x, int I){
     int32_t sum=0; int i=0;
@@ -452,8 +575,34 @@ static void matmul_i4_idot_mm(float *y, const int8_t *xq, const float *sx, const
 /* ---- IDOT dispatch (int8-quantized activations) --------------------------- */
 static void matmul_q_idot(float *y, const int8_t *xq, const float *sx, const int8_t *q,
                           const float *scale, int S, int I, int O){
+#if defined(__AVXVNNI__) && defined(__AVX2__) && !defined(__AVX512VNNI__)
+    if(S==1&&idot_wide_on()){
+        #pragma omp parallel for schedule(static)
+        for(int o=0;o<O;o++)
+            y[o]=(float)dot_i8i8_wide(q+(int64_t)o*I,xq,I)*scale[o]*sx[0];
+        return;
+    }
+#endif
 #if defined(__ARM_NEON) && defined(__ARM_FEATURE_MATMUL_INT8)
     if(S>=2){ matmul_q_idot_mm(y,xq,sx,q,scale,S,I,O); return; }
+#endif
+#if defined(__AVX2__) && !(defined(__AVX512VNNI__) && defined(__AVX512BW__))
+    if(S>=2&&idot_rows_on()){
+        #pragma omp parallel for schedule(static)
+        for(int o=0;o<O;o++){
+            const int8_t *w=q+(int64_t)o*I; float sc=scale[o]; int s=0;
+            for(;S-s>=4;s+=4){
+                int32_t d[4]; dot_i8i8_rows(w,xq+(int64_t)s*I,I,I,4,d);
+                for(int r=0;r<4;r++) y[(int64_t)(s+r)*O+o]=(float)d[r]*sc*sx[s+r];
+            }
+            if(S-s>=2){
+                int32_t d[4]; int n=S-s;
+                dot_i8i8_rows(w,xq+(int64_t)s*I,I,I,n,d);
+                for(int r=0;r<n;r++) y[(int64_t)(s+r)*O+o]=(float)d[r]*sc*sx[s+r];
+            }else if(s<S) y[(int64_t)s*O+o]=(float)dot_i8i8(w,xq+(int64_t)s*I,I)*sc*sx[s];
+        }
+        return;
+    }
 #endif
     #pragma omp parallel for schedule(static)
     for(int o=0;o<O;o++){ const int8_t *w=q+(int64_t)o*I; float sc=scale[o];
@@ -1023,6 +1172,84 @@ static void matmul_i4p_idot(float *y, const int8_t *xq, const float *sx, const i
             y[(int64_t)s*O+o]=(float)d*sc*sx[s];
         }
     }
+}
+
+/* Adjacent matrices sharing one already-quantized activation. One combined
+ * output-row range creates one OpenMP dispatch, while each output retains the
+ * integer dot and the exact (float)dot * weight_scale * activation_scale order.
+ * Caller-owned descriptors/scratch stay alive and immutable through return. */
+typedef struct {
+    float *y;
+    const int8_t *q;
+    const float *scale;
+    int O;
+} IdotProjection;
+
+static inline int idot_projection_overlap(const void *a, size_t an,
+                                           const void *b, size_t bn) {
+    uintptr_t ap = (uintptr_t)a, bp = (uintptr_t)b;
+    if (!an || !bn) return 0;
+    if (an > UINTPTR_MAX - ap || bn > UINTPTR_MAX - bp) return 1;
+    return ap <= bp ? bp - ap < an : ap - bp < bn;
+}
+
+/* Invalid shapes/ranges/aliases return 0 before any output is written. Bounds
+ * keep exact signed INT32 sums valid for |x|<=127 and the full INT8 weight
+ * range, including -128. Shapes outside this helper use the existing caller
+ * fallback. There are no allocations and no global mutable scratch. */
+static int matmul_q_idot_group(const IdotProjection *p, int count,
+        const int8_t *xq, const float *sx, int S, int I) {
+    int offset[17]; offset[0] = 0;
+    if (!p || !xq || !sx || count < 1 || count > 16 || S < 1 || I < 1 ||
+        I > INT32_MAX / (128 * 127) || (size_t)S > SIZE_MAX / (size_t)I ||
+        (size_t)S > SIZE_MAX / sizeof(float)) return 0;
+    size_t xb = (size_t)S * I, sb = (size_t)S * sizeof(float);
+    for (int j = 0; j < count; j++) {
+        if (!p[j].y || !p[j].q || !p[j].scale || p[j].O < 1 ||
+            p[j].O > INT32_MAX - offset[j] ||
+            (size_t)p[j].O > SIZE_MAX / (size_t)I ||
+            (size_t)p[j].O > SIZE_MAX / sizeof(float) ||
+            (size_t)S > SIZE_MAX / sizeof(float) / (size_t)p[j].O) return 0;
+        offset[j + 1] = offset[j] + p[j].O;
+        size_t yb = (size_t)S * p[j].O * sizeof(float);
+        if (idot_projection_overlap(p[j].y, yb, xq, xb) ||
+            idot_projection_overlap(p[j].y, yb, sx, sb) ||
+            idot_projection_overlap(p[j].y, yb, p, (size_t)count * sizeof(*p))) return 0;
+        for (int k = 0; k < count; k++) {
+            if (p[k].O < 1 || (size_t)p[k].O > SIZE_MAX / (size_t)I ||
+                (size_t)p[k].O > SIZE_MAX / sizeof(float) ||
+                (size_t)S > SIZE_MAX / sizeof(float) / (size_t)p[k].O) return 0;
+            if (idot_projection_overlap(p[j].y, yb, p[k].q, (size_t)p[k].O * I) ||
+                idot_projection_overlap(p[j].y, yb, p[k].scale, (size_t)p[k].O * sizeof(float)) ||
+                (j != k && idot_projection_overlap(p[j].y, yb, p[k].y,
+                                      (size_t)S * p[k].O * sizeof(float)))) return 0;
+        }
+    }
+    int reuse_rows = S > 1 && idot_rows_on();
+    int wide_row = S == 1 && idot_wide_on();
+    #pragma omp parallel for schedule(static)
+    for (int output = 0; output < offset[count]; output++) {
+        int j = 0;
+        while (output >= offset[j + 1]) j++;
+        int o = output - offset[j];
+        const int8_t *w = p[j].q + (int64_t)o * I;
+        float sc = p[j].scale[o];
+        int s = 0;
+        if (reuse_rows) {
+            for (; s < S; ) {
+                int n = S - s < 4 ? S - s : 4;
+                int32_t sums[4];
+                dot_i8i8_rows(w, xq + (int64_t)s * I, I, I, n, sums);
+                for (int row = 0; row < n; row++)
+                    p[j].y[(int64_t)(s + row) * p[j].O + o] = (float)sums[row] * sc * sx[s + row];
+                s += n;  /* end at S, including a partial INT_MAX boundary */
+            }
+        }
+        for (; s < S; s++)
+            p[j].y[(int64_t)s * p[j].O + o] = (float)(wide_row ? dot_i8i8_wide(w, xq, I)
+                                      : dot_i8i8(w, xq + (int64_t)s * I, I)) * sc * sx[s];
+    }
+    return 1;
 }
 
 #endif /* COLIBRI_IDOT_H */

@@ -1,0 +1,23 @@
+{
+  "phase": "unbiased-native-optimizations",
+  "active": true,
+  "status": "in_progress",
+  "runtime": "native-in-session",
+  "objective": "Port measured Unbiased Strata CPU scheduling and weight-sharing optimizations into Colibri, retaining independent parallel future-token heads",
+  "source": "robertkarl/UnbiasedStrata@d0a44ea7e757c59fa35a78b4b98d0c4bb44ce2cf",
+  "excluded": "sequential MTP draft chain; separate Strata engine port",
+  "owners": {
+    "/root/memory_primitives": "shared quantized activation and projection group",
+    "/root/parallel_heads": "exact INT8 multi-row weight reuse; CSNHv2 independent residual scorer/export",
+    "/root/architecture": "ablation benchmark; residual frontier harness and independent review",
+    "/root": "raw-logit cache, build, real measurements, attribution and publication"
+  },
+  "prior_head_quality": "held-out first head 12.9%, second head 8.0%, both 3.2%; no clear model speedup",
+  "cpu_port_result": "three prompts*five alternating pairs: median paired decode ratio1.0129; row1.0047;group1.0028; exact numeric parity; modest workload-dependent gain",
+  "current_heads_result": "rank16 isolated against optimized binary: median paired decode ratio0.9779 (slower)",
+  "residual_prototype": "rank24 independent cached-logit delta heads: heldoutINT8offset2 69/279,offset3 20/276,both10/279,meanprefix .28315; native runtime timing pending",
+  "residual_qualification": "CSNHv2 strict/scalar/OpenMP/ASan+UBSan and13interoptests; six captured reference replays; all live-target frontier/cancel/EOS/pin/precision gates passed",
+  "fresh_runtime_result": "15pairs each,3freshdisjointprompts: CPUports pairedmedian1.0331; residualheads samebinary0.9706(slower); one runperprompt parallel offset2 accepted3/31 gate-selected attempts; exactnumericparity",
+  "next_gate": "stronger parallel predictors with broad unseen accuracy; other-family/device real execution and model-native tier/KV gains",
+  "complete": false
+}

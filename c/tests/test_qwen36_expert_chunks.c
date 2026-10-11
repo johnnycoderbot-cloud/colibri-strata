@@ -4,6 +4,9 @@ static void observe_chunk(void *,int,int,int,void *,int);
 #ifdef COLI_CUDA
 #undef COLI_CUDA
 #endif
+#ifdef COLI_VULKAN
+#undef COLI_VULKAN
+#endif
 #define COLI_QWEN_XF_TEST_HOOK(m,r,k,u,h,n) observe_chunk((m),(r),(k),(u),(h),(n))
 #define main qwen36_main_unused
 #include "../qwen36.c"

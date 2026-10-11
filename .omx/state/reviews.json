@@ -24,7 +24,45 @@
     "reviewer": "/root/architecture",
     "status": "approved",
     "scope": "qualified qwen36 CPU adapter, shared hidden/known-token features, CSNH identity and active-bank rollback",
-    "fixed_findings": ["numeric mode missing from identity", "training fingerprint not bound during export", "FIFO loader blocking", "existing bank export overwrite", "capture minimum token cap too small"],
-    "qualification_limits": ["correctness fixtures are synthetic oracle-biased banks on a real target", "positive learned-head throughput pending", "other families/device backends pending", "sampling keeps learned heads disabled"]
+    "fixed_findings": [
+      "numeric mode missing from identity",
+      "training fingerprint not bound during export",
+      "FIFO loader blocking",
+      "existing bank export overwrite",
+      "capture minimum token cap too small"
+    ],
+    "qualification_limits": [
+      "correctness fixtures are synthetic oracle-biased banks on a real target",
+      "positive learned-head throughput pending",
+      "other families/device backends pending",
+      "sampling keeps learned heads disabled"
+    ]
+  },
+  {
+    "id": "unbiased-cpu-ports",
+    "reviewer": "/root/architecture",
+    "status": "approved",
+    "scope": "shared activation groups and exact INT8 multirow weight reuse",
+    "qualification_limits": [
+      "small workload-dependent model gain",
+      "optionalwide defaultoff",
+      "other-family/device real timing pending"
+    ]
+  },
+  {
+    "id": "native-residual-heads-v2",
+    "reviewer": "/root/architecture",
+    "status": "approved",
+    "scope": "explicit CSNHv2 kind, loader/exporter/scorer ABI, raw-logit frontier cache",
+    "fixed_findings": [
+      "encoded exporter offset/object validation",
+      "missing encoded matrices",
+      "macOS mkdtemp declaration"
+    ],
+    "qualification_limits": [
+      "synthetic residual banks prove transaction correctness only",
+      "trained residual bank timing ongoing",
+      "other-family/device execution pending"
+    ]
   }
 ]

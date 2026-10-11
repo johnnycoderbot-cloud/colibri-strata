@@ -1384,6 +1384,13 @@ static void pack_int4_g64_planar(const float *w, uint8_t *q4, float *sg, int O, 
 #ifdef COLI_QWEN_BATCH_TEST
 static uint64_t g_qwen_matmul_d_calls;
 #endif
+#ifdef COLI_QWEN_ACTIVATION_TEST
+static uint64_t g_qwen_activation_quant_calls, g_qwen_projection_group_dispatches;
+static uint64_t g_qwen_activation_heap_allocs;
+static int g_qwen_activation_fail_alloc;
+static int g_qwen_activation_count_enabled = 1;
+static size_t g_qwen_activation_limit = (size_t)32 << 20;
+#endif
 static int dense_i8_on(void){ static int v=-1; if(v<0){ const char *e=getenv("COLI_DENSE_I8"); v=!(e&&*e=='0'); } return v; }
 /* COLI_KV_PREFIX=0: never reuse a previous turn's state. Kept as an escape
  * hatch and as the B arm of the A/B that shows reuse changes nothing but
@@ -1674,8 +1681,12 @@ static void matmul_d(float *y, const float *x, const QW *w, int S, int I, int O)
             float *sx = malloc((size_t)S * sizeof(float));
             int32_t *xsg = w->q4 ? malloc((size_t)S * ng * sizeof(int32_t)) : NULL;
             if (xq && sx && (!w->q4 || xsg)) {
-                for (int s = 0; s < S; s++)
+                for (int s = 0; s < S; s++) {
+#ifdef COLI_QWEN_ACTIVATION_TEST
+                    if (g_qwen_activation_count_enabled) g_qwen_activation_quant_calls++;
+#endif
                     sx[s] = dense_act_i8(x + (int64_t)s * I, I, xq + (int64_t)s * I, xsg ? xsg + (int64_t)s * ng : NULL);
+                }
                 if (w->q4) matmul_i4p_grouped_idot(y, xq, sx, xsg, w->q4, w->sg, S, I, O, 64);
                 else       matmul_q_idot(y, xq, sx, w->q, w->sc, S, I, O);
                 free(xq); free(sx); free(xsg);
@@ -1700,6 +1711,117 @@ static inline int qtd_batch(int hp1, float *y, const float *x, int S, int I, int
 }
 static inline int qtd(int hp1, float *y, const float *x, int I, int O){
     return hp1 > 0 && qt_dense_matmul(hp1 - 1, y, x, I, O);
+}
+
+#include "strata_activation.h"
+typedef struct {
+    float *y;
+    const QW *w;
+    int O, tier;
+} Q36Projection;
+
+static int q36_projection_tier(const Q36Projection *p, const float *x, int S, int I) {
+    /* Keep the shared-MLP decode entry point. qt_dense_matmul itself delegates
+     * to qt_dense_matmul_batch(..., 1, ...) in qwen36_tier.c. */
+    return S == 1 ? qtd(p->tier, p->y, x, I, p->O)
+                  : qtd_batch(p->tier, p->y, x, S, I, p->O);
+}
+
+static float q36_shared_activation_quantize(const float *x, int I, int8_t *q, int32_t *sum) {
+#ifdef COLI_QWEN_ACTIVATION_TEST
+    if (g_qwen_activation_count_enabled) g_qwen_activation_quant_calls++;
+#endif
+    return dense_act_i8(x, I, q, sum);
+}
+
+static void q36_projection_independent(const Q36Projection *p, int count,
+                                        const float *x, int S, int I) {
+    for (int j = 0; j < count; j++)
+        if (!q36_projection_tier(&p[j], x, S, I))
+            matmul_d(p[j].y, x, p[j].w, S, I, p[j].O);
+}
+
+/* Shared ActQ / caller-owned scratch, adapted from UnbiasedStrata's CPU
+ * expert contract. These projections consume the same immutable x. The small
+ * decode/verify workspace is local (64 KiB); larger prompts use one bounded
+ * allocation, with the original per-matrix dispatch on any failure. No cached
+ * pointers survive the call, so independent sessions cannot share scratch.
+ * QWEN_PROJECTION_GROUP=0 restores the independent calls for an exact A/B. */
+static void q36_projection_group(const Q36Projection *p, int count,
+                                  const float *x, int S, int I) {
+    const char *env = getenv("QWEN_PROJECTION_GROUP");
+    int eligible = count >= 2 && count <= 3 && dense_idot_on() && !(env && *env == '0');
+#if !defined(__AVX2__) || defined(__AVX512VNNI__)
+    /* Preserve existing ISA-specific drivers outside the x86 AVX2/VNNI port,
+     * notably NEON i8mm's multi-row matrix tiles. Separate qualification is
+     * needed before changing those dispatches. */
+    eligible = 0;
+#endif
+    size_t required = 0, limit = STRATA_ACTIVATION_MAX_BYTES;
+#ifdef COLI_QWEN_ACTIVATION_TEST
+    limit = g_qwen_activation_limit;
+#endif
+    if (!strata_activation_bytes(S, I, limit, &required) ||
+        I > INT32_MAX / (128 * 127)) eligible = 0;
+#ifdef COLI_VULKAN
+    /* A device-eligible or device-only matrix retains matmul_d's exact device
+     * attempt/readback ordering; only a wholly host-resident group is fused. */
+    if (g_vk_ready && g_vk_dense) eligible = 0;
+#endif
+    for (int j = 0; eligible && j < count; j++) {
+        const QW *w = p[j].w;
+        if (!w || !p[j].y || !w->q || !w->sc || w->q4 || w->h ||
+            w->I != I || w->O != p[j].O || p[j].O < 1 ||
+            (size_t)S > SIZE_MAX / sizeof(float) / (size_t)p[j].O) {
+            eligible = 0; break;
+        }
+#ifdef COLI_VULKAN
+        if (w->vk_gone) { eligible = 0; break; }
+#endif
+        size_t ybytes = (size_t)S * p[j].O * sizeof(float);
+        size_t cells = (size_t)S * I;
+        if (cells > SIZE_MAX / sizeof(float) ||
+            strata_activation_overlap(p[j].y, ybytes, x, cells * sizeof(float))) {
+            eligible = 0; break;
+        }
+        for (int k = 0; k < j; k++)
+            if (strata_activation_overlap(p[j].y, ybytes, p[k].y,
+                                      (size_t)S * p[k].O * sizeof(float))) eligible = 0;
+    }
+    if (!eligible) { q36_projection_independent(p, count, x, S, I); return; }
+
+    IdotProjection cpu[3]; int pending[3], n = 0;
+    for (int j = 0; j < count; j++) {
+        if (q36_projection_tier(&p[j], x, S, I)) continue;
+        cpu[n] = (IdotProjection){ p[j].y, p[j].w->q, p[j].w->sc, p[j].O };
+        pending[n++] = j;
+    }
+    if (!n) return;
+    if (n == 1) {
+        int j = pending[0]; matmul_d(p[j].y, x, p[j].w, S, I, p[j].O); return;
+    }
+    union { float alignment; unsigned char bytes[STRATA_ACTIVATION_LOCAL_BYTES]; } local;
+    void *buffer = local.bytes;
+    if (required > sizeof local.bytes) {
+#ifdef COLI_QWEN_ACTIVATION_TEST
+        if (g_qwen_activation_count_enabled) g_qwen_activation_heap_allocs++;
+        buffer = g_qwen_activation_fail_alloc ? NULL : malloc(required);
+#else
+        buffer = malloc(required);
+#endif
+    }
+    StrataActivation act;
+    int ok = buffer && strata_activation_prepare(&act, x, S, I, buffer, required,
+                                                  q36_shared_activation_quantize);
+    if (ok) ok = matmul_q_idot_group(cpu, n, act.q, act.scale, S, I);
+#ifdef COLI_QWEN_ACTIVATION_TEST
+    if (ok && g_qwen_activation_count_enabled) g_qwen_projection_group_dispatches++;
+#endif
+    if (buffer && buffer != (void *)local.bytes) free(buffer);
+    if (!ok)
+        for (int k = 0; k < n; k++) {
+            int j = pending[k]; matmul_d(p[j].y, x, p[j].w, S, I, p[j].O);
+        }
 }
 /* Bytes of w's dense-i8 copy (int8 rows + per-row scales), 0 when there is
  * none (COLI_DENSE_I8=0): nothing to offer, the CPU path stands. */
@@ -3034,9 +3156,10 @@ static void attention(Model *m, Layer *l, int layer, float *x, int S, int pos_ba
     float *vv= falloc((int64_t)S*kv_out);
     /* The projections the tier placed answer from VRAM for the whole batch,
      * with one backend call per matrix; unavailable handles use CPU matmul. */
-    if (!qtd_batch(l->qth_q, q, x, S, D, q_out))   matmul_d(q, x, &l->q, S, D, q_out);
-    if (!qtd_batch(l->qth_k, k, x, S, D, kv_out))  matmul_d(k, x, &l->k, S, D, kv_out);
-    if (!qtd_batch(l->qth_v, vv, x, S, D, kv_out)) matmul_d(vv, x, &l->v, S, D, kv_out);
+    Q36Projection qkv[] = {{q, &l->q, q_out, l->qth_q},
+                           {k, &l->k, kv_out, l->qth_k},
+                           {vv, &l->v, kv_out, l->qth_v}};
+    q36_projection_group(qkv, 3, x, S, D);
     /* split q into query (first hd) and gate (next gate_dim), both per head */
     float *query = falloc((int64_t)S*H*hd);
     float *gate  = gate_dim ? falloc((int64_t)S*H*gate_dim) : NULL;   /* qwen3_moe: no gate */
@@ -3143,8 +3266,9 @@ static void qwen_shared_experts_cpu(Model *m, Layer *l, const float *x, int S,
     if (B == 1) {
         for (int s=0;s<S;s++) {
             const float *xs=x+(int64_t)s*D;
-            if(!qtd(l->qth_shg,g,xs,D,I)) matmul_d(g,xs,&l->sh_g,1,D,I);
-            if(!qtd(l->qth_shu,u,xs,D,I)) matmul_d(u,xs,&l->sh_u,1,D,I);
+            Q36Projection gu[] = {{g, &l->sh_g, I, l->qth_shg},
+                                  {u, &l->sh_u, I, l->qth_shu}};
+            q36_projection_group(gu, 2, xs, 1, D);
             for(int i=0;i<I;i++){float sv=g[i];g[i]=(sv/(1.f+expf(-sv)))*u[i];}
             if(!qtd(l->qth_shd,hh,g,I,D)) matmul_d(hh,g,&l->sh_d,1,I,D);
             float sgate=1.f;
@@ -3157,8 +3281,8 @@ static void qwen_shared_experts_cpu(Model *m, Layer *l, const float *x, int S,
         float *bh=falloc((int64_t)B*D);
         for(int base=0;base<S;base+=B){
             int rows=S-base<B?S-base:B;
-            matmul_d(bg,x+(int64_t)base*D,&l->sh_g,rows,D,I);
-            matmul_d(bu,x+(int64_t)base*D,&l->sh_u,rows,D,I);
+            Q36Projection gu[] = {{bg, &l->sh_g, I, 0}, {bu, &l->sh_u, I, 0}};
+            q36_projection_group(gu, 2, x+(int64_t)base*D, rows, D);
             for(int64_t q=0;q<(int64_t)rows*I;q++){float sv=bg[q];bg[q]=(sv/(1.f+expf(-sv)))*bu[q];}
             matmul_d(bh,bg,&l->sh_d,rows,I,D);
             for(int s=0;s<rows;s++){
@@ -3732,8 +3856,9 @@ static void moe_ex(Model *m, Layer *l, int layer, float *x, int S, float *out,
             if (c->shared_inter > 0) {
                 double _ts2 = tm_now();
                 int Ish = c->shared_inter;
-                if (!qtd(l->qth_shg, sh, xs, D, Ish))  matmul_d(sh, xs, &l->sh_g, 1, D, Ish);
-                if (!qtd(l->qth_shu, shu, xs, D, Ish)) matmul_d(shu, xs, &l->sh_u, 1, D, Ish);
+                Q36Projection gu[] = {{sh, &l->sh_g, Ish, l->qth_shg},
+                                      {shu, &l->sh_u, Ish, l->qth_shu}};
+                q36_projection_group(gu, 2, xs, 1, D);
                 for (int i = 0; i < Ish; i++) { float sv = sh[i]; sh[i] = (sv / (1.f + expf(-sv))) * shu[i]; }
                 if (!qtd(l->qth_shd, shd, sh, Ish, D)) matmul_d(shd, sh, &l->sh_d, 1, Ish, D);
                 float sgate = 1.f;
@@ -3914,8 +4039,9 @@ static void deltanet(Model *m, Layer *l, int layer, float *x, int S, int pos_bas
         double _d0 = tm_now();
         int gpu_block = qt_dnproj_ready(layer) && qt_dnproj_matmul_batch(layer, qkvz, xb, rows, H, proj_dim);
         if (!gpu_block) {
-            matmul_d(qkvb, xb, &l->dn_qkv, rows, H, conv_dim);
-            matmul_d(zb,   xb, &l->dn_z,   rows, H, value_dim);
+            Q36Projection qz[] = {{qkvb, &l->dn_qkv, conv_dim, 0},
+                                  {zb, &l->dn_z, value_dim, 0}};
+            q36_projection_group(qz, 2, xb, rows, H);
         }
         matmul(bb, xb, l->dn_b, rows, H, vh);
         matmul(ab, xb, l->dn_a, rows, H, vh);
@@ -4412,6 +4538,9 @@ static float *step_ex(Model *m, const int *ids, int S, int pos_base, int nlogits
         }
     }
     if (tm_on()) { tm_add(S, 5, tm_now()-_th); if (S==1) g_tm_dec_tokens++; else g_tm_pre_tokens += S; }
+#ifdef COLI_STRATA_NATIVE
+    q36_sn_publish_logits(m,logit,S,nlogits,pos_base);
+#endif
     free(x); free(last);
     if (lf) fclose(lf);
     if (m->resident_collecting) {
@@ -4882,6 +5011,7 @@ static void q36_spec_begin(Model *m, Q36Spec *sp, const int *prompt, int np) {
 #ifdef COLI_STRATA_NATIVE
     sp->heads = g_sn_bank != NULL;
     g_sn_valid = 0; /* A new/pinned conversation never borrows another frontier. */
+    g_sn_base_valid = 0;
     g_sn_generation++; g_sn_trace_active = 1;
 #endif
     const char *e = getenv("COLI_LOOKUP");
@@ -4998,6 +5128,10 @@ static float *q36_spec_step(Model *m, Q36Spec *sp, int tok, int pos, int more) {
             if (sp->ahead_hidden) {
                 memcpy(g_sn_frontier,sp->ahead_hidden+(size_t)(i-1)*g_sn_h,(size_t)g_sn_h*sizeof(float));
                 g_sn_valid=1; g_sn_pos=pos; g_sn_frontier_token=tok;
+                if (g_sn_base) {
+                    memcpy(g_sn_base,logit,(size_t)V*sizeof(float));
+                    g_sn_base_pos=pos; g_sn_base_valid=1;
+                }
             }
 #endif
             sp->accepted++;
@@ -5012,13 +5146,17 @@ static float *q36_spec_step(Model *m, Q36Spec *sp, int tok, int pos, int more) {
     int d[Q36_SPEC_ROWS], k = 0;
     int src = SPEC_SRC_LOOKUP;
 #ifdef COLI_STRATA_NATIVE
-    if (sp->heads && room>0 && g_sn_valid && g_sn_pos==pos-1 && !m->vis_rows_n) {
+    if (sp->heads && room>0 && g_sn_valid && g_sn_pos==pos-1 && !m->vis_rows_n &&
+        (!g_sn_residual || (g_sn_base_valid && g_sn_base_pos==g_sn_pos))) {
         int available=(int)g_sn_info.head_count;
         if (available>room) available=room;
         int wanted=spec_gate_pick(&sp->gate,SPEC_SRC_PARALLEL,available,NULL);
         if (wanted>0) {
             int predictions[SN_MAX_HEADS]; double start=now_s();
-            sn_status result=sn_predict(g_sn_bank,q36_sn_input(m,tok),predictions);
+            const float *features=q36_sn_input(m,tok);
+            sn_status result=g_sn_residual ?
+                sn_predict_residual(g_sn_bank,features,g_sn_base,predictions) :
+                sn_predict(g_sn_bank,features,predictions);
             double elapsed=now_s()-start;
             sp->bank_calls++; sp->bank_seconds+=elapsed;
             spec_gate_draft_cost(&sp->gate,SPEC_SRC_PARALLEL,elapsed); /* one whole-bank cost */
@@ -5080,7 +5218,7 @@ static float *q36_spec_step(Model *m, Q36Spec *sp, int tok, int pos, int more) {
 static void q36_spec_end(Model *m, Q36Spec *sp) {
     if (sp->ahead_n) { sp->ended_ahead = 1; q36_spec_settle(m, sp, sp->ahead_i, 0); }
 #ifdef COLI_STRATA_NATIVE
-    g_sn_valid=0; g_sn_trace_active=0;
+    g_sn_valid=0; g_sn_base_valid=0; g_sn_trace_active=0;
 #endif
 }
 

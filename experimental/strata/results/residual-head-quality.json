@@ -1,0 +1,246 @@
+{
+  "native_fingerprint": "09270fb49fb801cc99dc6ce97b06aac331d0dcc7750223dd1d04e8e76c69fd78",
+  "source_sha256": "2db4210fc7b33b3e28f85459e3641127f47fdac6999a4633afc854e09653d8a6",
+  "kind": "logit-residual",
+  "requires_csnh_v2": true,
+  "ordinary_csnh_v1_compatible": false,
+  "native_base_known_token_agreement": 1.0,
+  "native_base_reconstruction": "FP32 integer-code GEMM with bounded exact integer sums; scale multiplication follows C order, native C score-bit parity not yet tested",
+  "direct_f16_hidden_prototype": {
+    "offset2_top1": 0.25089606642723083,
+    "offset3_top1": 0.07246376574039459,
+    "offset2_matches": 70,
+    "both_matches": 10,
+    "both_match_rate": 0.035842293906810034,
+    "accepted_head_prefix_mean": 0.2867383512544803
+  },
+  "factorization_equivalence": {
+    "2": {
+      "max_abs_score_difference": 1.1444091796875e-05,
+      "within_tolerance": true
+    },
+    "3": {
+      "max_abs_score_difference": 1.33514404296875e-05,
+      "within_tolerance": true
+    }
+  },
+  "factorization_tolerance": {
+    "absolute": 0.0002,
+    "relative": 2e-05
+  },
+  "heldout_used_for_fitting": false,
+  "independent_offsets": [
+    2,
+    3
+  ],
+  "storage_results": {
+    "4": {
+      "cached_native_base": {
+        "offset2_top1": 0.24014337360858917,
+        "offset3_top1": 0.06884057819843292,
+        "offset2_matches": 67,
+        "both_matches": 8,
+        "both_match_rate": 0.02867383512544803,
+        "accepted_head_prefix_mean": 0.26881720430107525
+      },
+      "f16_base_reference": {
+        "offset2_top1": 0.24014337360858917,
+        "offset3_top1": 0.06884057819843292,
+        "offset2_matches": 67,
+        "both_matches": 8,
+        "both_match_rate": 0.02867383512544803,
+        "accepted_head_prefix_mean": 0.26881720430107525
+      },
+      "hybrid_vs_f16_prediction_agreement": {
+        "2": 0.9928315281867981,
+        "3": 0.989130437374115
+      },
+      "full_vocabulary_mean_cross_entropy": {
+        "2": {
+          "cached_native_base": 5.446930766451954,
+          "f16_base_reference": 5.44737301957787
+        },
+        "3": {
+          "cached_native_base": 10.46269455639001,
+          "f16_base_reference": 10.461147514421839
+        }
+      },
+      "factorized_f16_vs_full_hidden_prediction_agreement": {
+        "2": 0.7921146750450134,
+        "3": 0.70652174949646
+      }
+    },
+    "8": {
+      "cached_native_base": {
+        "offset2_top1": 0.24731183052062988,
+        "offset3_top1": 0.07246376574039459,
+        "offset2_matches": 69,
+        "both_matches": 10,
+        "both_match_rate": 0.035842293906810034,
+        "accepted_head_prefix_mean": 0.2831541218637993
+      },
+      "f16_base_reference": {
+        "offset2_top1": 0.24731183052062988,
+        "offset3_top1": 0.07246376574039459,
+        "offset2_matches": 69,
+        "both_matches": 10,
+        "both_match_rate": 0.035842293906810034,
+        "accepted_head_prefix_mean": 0.2831541218637993
+      },
+      "hybrid_vs_f16_prediction_agreement": {
+        "2": 1.0,
+        "3": 0.97826087474823
+      },
+      "full_vocabulary_mean_cross_entropy": {
+        "2": {
+          "cached_native_base": 5.275143653857763,
+          "f16_base_reference": 5.274810959242755
+        },
+        "3": {
+          "cached_native_base": 10.270350909357001,
+          "f16_base_reference": 10.269900451256209
+        }
+      },
+      "factorized_f16_vs_full_hidden_prediction_agreement": {
+        "2": 0.9856630563735962,
+        "3": 0.9637681245803833
+      }
+    },
+    "16": {
+      "cached_native_base": {
+        "offset2_top1": 0.24731183052062988,
+        "offset3_top1": 0.07246376574039459,
+        "offset2_matches": 69,
+        "both_matches": 10,
+        "both_match_rate": 0.035842293906810034,
+        "accepted_head_prefix_mean": 0.2831541218637993
+      },
+      "f16_base_reference": {
+        "offset2_top1": 0.25089606642723083,
+        "offset3_top1": 0.07246376574039459,
+        "offset2_matches": 70,
+        "both_matches": 10,
+        "both_match_rate": 0.035842293906810034,
+        "accepted_head_prefix_mean": 0.2867383512544803
+      },
+      "hybrid_vs_f16_prediction_agreement": {
+        "2": 0.9892473220825195,
+        "3": 0.9818840622901917
+      },
+      "full_vocabulary_mean_cross_entropy": {
+        "2": {
+          "cached_native_base": 5.278729315994548,
+          "f16_base_reference": 5.278395815475797
+        },
+        "3": {
+          "cached_native_base": 10.272048055784468,
+          "f16_base_reference": 10.27163143133614
+        }
+      },
+      "factorized_f16_vs_full_hidden_prediction_agreement": {
+        "2": 1.0,
+        "3": 1.0
+      }
+    },
+    "32": {
+      "cached_native_base": {
+        "offset2_top1": 0.24731183052062988,
+        "offset3_top1": 0.07246376574039459,
+        "offset2_matches": 69,
+        "both_matches": 10,
+        "both_match_rate": 0.035842293906810034,
+        "accepted_head_prefix_mean": 0.2831541218637993
+      },
+      "f16_base_reference": {
+        "offset2_top1": 0.25089606642723083,
+        "offset3_top1": 0.07246376574039459,
+        "offset2_matches": 70,
+        "both_matches": 10,
+        "both_match_rate": 0.035842293906810034,
+        "accepted_head_prefix_mean": 0.2867383512544803
+      },
+      "hybrid_vs_f16_prediction_agreement": {
+        "2": 0.9892473220825195,
+        "3": 0.9818840622901917
+      },
+      "full_vocabulary_mean_cross_entropy": {
+        "2": {
+          "cached_native_base": 5.278730686370603,
+          "f16_base_reference": 5.278397363814437
+        },
+        "3": {
+          "cached_native_base": 10.272050497704265,
+          "f16_base_reference": 10.271633863205814
+        }
+      },
+      "factorized_f16_vs_full_hidden_prediction_agreement": {
+        "2": 1.0,
+        "3": 1.0
+      }
+    }
+  },
+  "head_compute": "Double reference accumulation, F32 latent/output rounding; cached F32 native base",
+  "quantization": "True CSQ1 signed integer weight storage simulated through canonical decode; F32 activations",
+  "complete_int8_codec_roundtrip": [
+    {
+      "offset": 2,
+      "matrix": "down",
+      "values": 49152,
+      "bytes": 52248,
+      "sha256": "d723dedaa35a55c77eae96f2999c778ade501d4e9eded63d03720831e60ccc64",
+      "all_decoded_values_equal": true
+    },
+    {
+      "offset": 2,
+      "matrix": "up",
+      "values": 5959680,
+      "bytes": 6332184,
+      "sha256": "5ca50a04dde6a8f7bcf4b0ab793792e448c654e05ff12afcd24447e4991a5fd3",
+      "all_decoded_values_equal": true
+    },
+    {
+      "offset": 3,
+      "matrix": "down",
+      "values": 49152,
+      "bytes": 52248,
+      "sha256": "c97a2bd1d833c78a142d4c94d30d99c5a2cc39ea988420efc76baa8826a39ada",
+      "all_decoded_values_equal": true
+    },
+    {
+      "offset": 3,
+      "matrix": "up",
+      "values": 5959680,
+      "bytes": 6332184,
+      "sha256": "2ed9b482a67195915b3bfbb616e439ef0eda0a49cc52f10b6c0d183b791dfbd4",
+      "all_decoded_values_equal": true
+    }
+  ],
+  "converted_weight_sha256": "faeefa63b632f59c9b27654e7d3c395e3780877d25123c9aa3c93695d3cec1b6",
+  "elapsed_seconds": 37.93530919999466,
+  "schema": "colibri.strata.residual-head-quality/v1",
+  "model": "Qwen/Qwen3.5-0.8B",
+  "checkpoint_revision": "2fc06364715b967f1860aea9cf38778875588b17",
+  "trained_rows": 2232,
+  "development_heldout_rows": 279,
+  "rank": 24,
+  "training": "training-only centered RMS ridge then 600 sampled-cross-entropy steps; frozen pretrained F16 output weights",
+  "split_scope": "Separate requests from training; these development-heldout results informed prototype selection. Fresh disjoint requests are used for runtime performance qualification.",
+  "speed_evidence": false,
+  "runtime_hardware_scope": "qualified initial native Qwen CPU target; no GPU/NPU/TPU/AIPU speed claim",
+  "native_c_residual_scorer_replay": {
+    "reference_states": 6,
+    "modes": [
+      "scalar",
+      "OpenMP",
+      "ASan+UBSan"
+    ],
+    "all_predictions_match": true,
+    "scope": "native residual scorer against captured-feature and reference reconstructed native-base vectors; direct native LM score-bit parity remains separate"
+  },
+  "native_bank": {
+    "schema": "CSNH v2/kind1",
+    "source_bits": 8,
+    "bytes": 14755584,
+    "sha256": "95b9a260d4fe8d1f5f237d515afc4642da24d329a49ef17b8ddabe084e5e681b"
+  }
+}

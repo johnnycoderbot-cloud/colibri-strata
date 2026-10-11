@@ -1328,8 +1328,20 @@ tests/test_strata_native_heads$(EXE): tests/test_strata_native_heads.c strata_na
 tests/test_qwen36_head_batch$(EXE): tests/test_qwen36_head_batch.c
 	$(CC) $(NOCUDA_CFLAGS) $< -o $@ $(NOCUDA_LDFLAGS)
 
+tests/test_qwen36_residual_anchor$(EXE): tests/test_qwen36_residual_anchor.c strata_native_heads.o
+	$(CC) $(NOCUDA_CFLAGS) $< strata_native_heads.o -o $@ $(NOCUDA_LDFLAGS)
+
 tests/test_qwen36_expert_chunks$(EXE): tests/test_qwen36_expert_chunks.c
 	$(CC) $(NOCUDA_CFLAGS) $< -o $@ $(NOCUDA_LDFLAGS)
+
+tests/test_strata_activation$(EXE): tests/test_strata_activation.c
+	$(CC) $(NOCUDA_CFLAGS) $< -o $@ $(NOCUDA_LDFLAGS)
+
+tests/test_idot_multi_rows$(EXE): tests/test_idot_multi_rows.c
+	$(CC) $(CFLAGS) $< -o $@ $(LDFLAGS)
+
+tests/test_idot_wide$(EXE): tests/test_idot_wide.c
+	$(CC) $(CFLAGS) $< -o $@ $(LDFLAGS)
 
 qwen36$(EXE): qwen36.c strata_native_heads.o $(QWEN36_TIER_OBJ) $(QWEN36_QPACK_OBJ) $(CUDA_OBJ) $(METAL_OBJ) $(VK_OBJ) $(VK_SPV) .build-config
 	$(CC) $(QWEN36_CFLAGS) -DCOLI_STRATA_NATIVE qwen36.c strata_native_heads.o $(QWEN36_TIER_OBJ) $(QWEN36_QPACK_OBJ) $(CUDA_OBJ) $(METAL_OBJ) $(VK_OBJ) -o qwen36$(EXE) $(QWEN36_LDFLAGS)
@@ -3103,24 +3115,38 @@ strata-runtime-check:
 
 # Bounded native adapter tests; the real-model frontier harness is an explicit
 # operator run against a pinned checkpoint, not a synthetic throughput claim.
-strata-native-check: tests/test_strata_native_heads$(EXE) tests/test_qwen36_head_batch$(EXE) tests/test_qwen36_expert_chunks$(EXE) tests/test_spec_draft$(EXE)
+strata-native-check: tests/test_strata_native_heads$(EXE) tests/test_qwen36_head_batch$(EXE) tests/test_qwen36_expert_chunks$(EXE) tests/test_spec_draft$(EXE) tests/test_strata_activation$(EXE) tests/test_idot_multi_rows$(EXE) tests/test_idot_wide$(EXE) tests/test_qwen36_residual_anchor$(EXE)
 	./tests/test_strata_native_heads$(EXE)
 	./tests/test_qwen36_head_batch$(EXE)
+	./tests/test_qwen36_residual_anchor$(EXE)
 	./tests/test_qwen36_expert_chunks$(EXE)
 	./tests/test_spec_draft$(EXE)
+	./tests/test_strata_activation$(EXE)
+	./tests/test_idot_multi_rows$(EXE)
+	./tests/test_idot_wide$(EXE)
 	$(PYTHON) -m unittest discover -s tests -p test_export_native_heads.py -v
 	$(PYTHON) -m unittest discover -s tests -p test_native_decode_bench.py -v
 	$(PYTHON) -m unittest discover -s tests -p test_capture_native_heads.py -v
 	$(PYTHON) -m unittest discover -s tests -p test_parallel_heads_cli.py -v
+	$(PYTHON) -m unittest discover -s tests -p test_native_optimization_bench.py -v
+	$(PYTHON) -m unittest discover -s tests -p test_native_head_frontier_harness.py -v
 
 strata-native-sanitize:
 	$(CC) $(STRATA_CHECK_CFLAGS) -O1 -g -fopenmp -fsanitize=address,undefined -fno-omit-frame-pointer -c strata_native_heads.c -o tests/strata_native_heads_sanitize.o
 	$(CC) $(STRATA_CHECK_CFLAGS) -O1 -g -fopenmp -fsanitize=address,undefined -fno-omit-frame-pointer tests/test_strata_native_heads.c tests/strata_native_heads_sanitize.o -lm -o tests/test_strata_native_heads_sanitize$(EXE)
 	$(ASAN_ENV) ./tests/test_strata_native_heads_sanitize$(EXE)
+	$(CC) $(NOCUDA_CFLAGS) $(ASAN_CFLAGS) tests/test_qwen36_residual_anchor.c tests/strata_native_heads_sanitize.o -o tests/test_qwen36_residual_anchor_sanitize$(EXE) $(NOCUDA_LDFLAGS) $(ASAN_LDFLAGS)
+	$(ASAN_ENV) ./tests/test_qwen36_residual_anchor_sanitize$(EXE)
 	$(CC) $(NOCUDA_CFLAGS) $(ASAN_CFLAGS) tests/test_qwen36_head_batch.c -o tests/test_qwen36_head_batch_sanitize$(EXE) $(NOCUDA_LDFLAGS) $(ASAN_LDFLAGS)
 	$(ASAN_ENV) ./tests/test_qwen36_head_batch_sanitize$(EXE)
 	$(CC) $(NOCUDA_CFLAGS) $(ASAN_CFLAGS) tests/test_qwen36_expert_chunks.c -o tests/test_qwen36_expert_chunks_sanitize$(EXE) $(NOCUDA_LDFLAGS) $(ASAN_LDFLAGS)
 	$(ASAN_ENV) ./tests/test_qwen36_expert_chunks_sanitize$(EXE)
+	$(CC) $(NOCUDA_CFLAGS) $(ASAN_CFLAGS) tests/test_strata_activation.c -o tests/test_strata_activation_sanitize$(EXE) $(NOCUDA_LDFLAGS) $(ASAN_LDFLAGS)
+	$(ASAN_ENV) ./tests/test_strata_activation_sanitize$(EXE)
+	$(CC) $(CFLAGS) $(ASAN_CFLAGS) tests/test_idot_multi_rows.c -o tests/test_idot_multi_rows_sanitize$(EXE) $(LDFLAGS) $(ASAN_LDFLAGS)
+	$(ASAN_ENV) ./tests/test_idot_multi_rows_sanitize$(EXE)
+	$(CC) $(CFLAGS) $(ASAN_CFLAGS) tests/test_idot_wide.c -o tests/test_idot_wide_sanitize$(EXE) $(LDFLAGS) $(ASAN_LDFLAGS)
+	$(ASAN_ENV) ./tests/test_idot_wide_sanitize$(EXE)
 
 .PHONY: strata-native-check strata-native-sanitize
 
