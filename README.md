@@ -16,11 +16,15 @@ Included now:
 - Target-only greedy verification with explicit snapshot, restore, commit, EOS,
   output budget and failure handling. The reference verifier replays committed
   tokens; production adapters must account for that cost.
-- An INT8 block codec, bounded decaying hot-expert selection, and two-slot prefetch
+- True INT4/INT8/INT16 weight codecs and quantized parallel heads, an INT8 KV-reference
+  block codec, bounded decaying hot-expert selection, and two-slot prefetch
   lifecycle with transfer and consumer fences. These are reference primitives;
   CUDA/HIP transfers, model KV layouts and actual residency need backend adapters.
 - Offline training and C weight export from checkpoint-identified hidden traces.
   Trained heads are specific to a checkpoint, tokenizer, quantization and hidden tap.
+- Optional ONNX GPU/NPU and JAX GPU/TPU standalone head runners with explicit device
+  refusal and profiling; physical Intel GPU, Metis vendor-artifact and NVMe checks.
+  See the [precision/hardware matrix](docs/precision-hardware.md) for exact limits.
 
 ```sh
 git clone https://github.com/johnnycoderbot-cloud/colibri-strata.git
@@ -28,6 +32,7 @@ cd colibri-strata
 make -C c strata-check          # C behavior tests + trace/pack checks
 make -C c strata-sanitize       # Linux GCC/Clang ASan + UBSan
 make -C c strata-bench          # synthetic head timing, not model tokens/s
+make -C c strata-fuzz           # bounded malformed-data and failure campaign
 ```
 
 [Architecture and family coverage](docs/strata-fork.md) ·

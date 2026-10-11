@@ -82,6 +82,9 @@ static void run_vectors(void){
     while(fgets(line,sizeof(line),f)){
         size_t len=strlen(line);
         if(len && line[len-1]=='\n') line[--len]=0;
+        /* Checkout line endings are record syntax. Payload CR/LF bytes use
+         * the explicit \\r/\\n vector escapes and remain strictly tested. */
+        if(len && line[len-1]=='\r') line[--len]=0;
         if(!len || line[0]=='#') continue;
         /* fields are tab-separated; the payload is everything after the last
          * expectation field and may itself contain literal spaces */

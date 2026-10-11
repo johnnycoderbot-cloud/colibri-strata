@@ -21,6 +21,7 @@ TRACE_SCHEMA = "colibri.strata.hidden-trace/v1"
 PACK_SCHEMA = "colibri.strata.parallel-heads/v1"
 MAX_FLOATS = 16_000_000
 MAX_TRACE_BYTES = 256 * 1024 * 1024
+FLOAT32_MAX = float.fromhex("0x1.fffffep+127")
 
 
 def require(condition, message):
@@ -71,7 +72,7 @@ def load_trace(path, offsets):
             h, future = row.get("hidden"), row.get("future_tokens")
             require(isinstance(h, list) and len(h) == width,
                     f"line {number}: hidden width differs from metadata")
-            require(all(type(x) in (int, float) and abs(x) <= 3.402823466e38 and math.isfinite(x) for x in h),
+            require(all(type(x) in (int, float) and abs(x) <= FLOAT32_MAX and math.isfinite(x) for x in h),
                     f"line {number}: nonfinite or unrepresentable hidden value")
             require(isinstance(future, list), f"line {number}: missing future_tokens")
             require(all(x is None or (type(x) is int and 0 <= x < vocab) for x in future),
@@ -160,7 +161,7 @@ def validate_pack(pack, expected_identity=None):
                             ("up", rank * meta["vocab_size"]), ("bias", meta["vocab_size"])):
             array = head.get(key)
             require(isinstance(array, list) and len(array) == length, f"wrong {key} dimensions")
-            require(all(type(v) in (int, float) and abs(v) <= 3.402823466e38 and math.isfinite(v) for v in array),
+            require(all(type(v) in (int, float) and abs(v) <= FLOAT32_MAX and math.isfinite(v) for v in array),
                     f"invalid {key} weight")
             total += length
     require(offsets == sorted(set(offsets)), "head offsets must be unique and increasing")
@@ -214,6 +215,9 @@ def main():
     parser.add_argument("--trace", required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument("--export-c", help="also export a trusted build-time C header")
+    parser.add_argument("--weight-bits", type=int, choices=(4, 8, 16, 32), default=32,
+                        help="C export storage precision; INT16 is integer, not FP16")
+    parser.add_argument("--block-values", type=int, default=64)
     parser.add_argument("--offsets", default="2,3,4")
     parser.add_argument("--rank", type=int, default=16)
     parser.add_argument("--steps", type=int, default=100)
@@ -228,13 +232,19 @@ def main():
         output = Path(args.out)
         require(not output.exists(), "output already exists; use a new filename")
         require(output.resolve() != Path(args.trace).resolve(), "output cannot replace trace")
-        c_text = export_c(pack) if args.export_c else None
+        if args.export_c and args.weight_bits != 32:
+            import precision
+            c_text = precision.export_c(pack, args.weight_bits, args.block_values)
+        else:
+            c_text = export_c(pack) if args.export_c else None
         if args.export_c:
             require(not Path(args.export_c).exists(), "C output already exists")
             require(Path(args.export_c).resolve() != output.resolve(), "C and JSON outputs must differ")
-        output.write_text(json.dumps(pack, allow_nan=False) + "\n", encoding="utf-8")
+        with output.open("x", encoding="utf-8") as stream:
+            stream.write(json.dumps(pack, allow_nan=False) + "\n")
         if c_text:
-            Path(args.export_c).write_text(c_text, encoding="utf-8")
+            with Path(args.export_c).open("x", encoding="utf-8") as stream:
+                stream.write(c_text)
         print(json.dumps({"output": str(output), "heads": len(pack["heads"]),
                           "training": pack["training"]}))
     except (ValueError, OSError, ImportError, KeyError, TypeError) as exc:

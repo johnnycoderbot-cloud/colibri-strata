@@ -37,6 +37,7 @@ python experimental/strata/heads.py --trace target-trace.jsonl \
   --offsets 2,3,4 --rank 16 --steps 1000 --batch-size 8
 python -m unittest discover -s experimental/strata -p 'test_*.py' -v
 python experimental/strata/export_smoke.py  # requires torch and gcc/clang with OpenMP
+python experimental/strata/precision_smoke.py # true INT4/8/16 C/Python byte parity
 ```
 
 Outputs must be new files. The JSON pack binds family, checkpoint, tokenizer,
@@ -58,3 +59,9 @@ packs mark `quality_validated: false`; changing that flag cannot certify a pack.
 
 Future learned heads, prefetch buffers, hot-expert policy and INT8 KV are currently
 experimental interfaces; `coli chat` has no new feature switch for them.
+
+The C exporter now supports `--weight-bits 4`, `8` or `16`. These are signed integer
+storage formats, with FP32 activation/reference computation. See
+[precision and hardware validation](../../docs/precision-hardware.md) for optional
+ONNX providers, explicit JAX TPU placement, Axelera compiled-artifact verification,
+NVMe file-tier tests and the distinction between physical and simulated evidence.

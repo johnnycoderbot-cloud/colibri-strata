@@ -1,0 +1,16 @@
+{
+  "schema": "colibri.strata.validation-evidence/v1",
+  "date": "2026-10-10",
+  "integer_storage": [4, 8, 16],
+  "compute": "F32 activations; CPU double reference; optional GPU/JAX F32 graph",
+  "c_python_bytes_and_tokens": "passed",
+  "seeded_sanitized_cases": 1300000,
+  "fuzz_seeds": ["20261010", "20261011", "0", "18446744073709551615"],
+  "gpu": {"device": "Intel UHD Graphics 770", "driver": "32.0.101.7088", "provider": "DirectML 1.24.4", "integer_source_formats": [4, 8, 16], "compute": "F32", "exclusive_compute_profiles": "passed"},
+  "axelera": {"device": "Metis M.2 110m", "runtime": "1.8.0", "driver": "1.3.14.0", "vendor_model": "ResNet50", "frames_checked": 1346, "frames_passed": 1346, "colibri_heads": "not yet compiled/qualified", "native_INT4_INT16": "unverified"},
+  "nvme": {"workspace_drive": "C:", "model": "Lexar SSD NQ7A1 1TB", "bus_type": "NVMe", "verified_random_read_bytes": 67108864, "stored_formats": [4, 8, 16], "mode": "buffered regular files", "integrity": "passed"},
+  "jax": {"CPU": "passed", "physical_TPU": "unavailable", "absent_TPU_refusal": "passed"},
+  "physical_other_NPUs_GPUs": "unavailable; only interface/fallback tests",
+  "real_model_head_quality": "pending",
+  "production_engine_integration": "pending"
+}

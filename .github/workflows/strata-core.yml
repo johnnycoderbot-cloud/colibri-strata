@@ -39,6 +39,10 @@ jobs:
         run: make -C c strata-check-scalar
       - name: ASan and UBSan
         run: make -C c strata-sanitize
+      - name: Seeded adversarial campaign
+        run: make -C c strata-fuzz STRATA_FUZZ_CASES=100000
+      - name: Coverage-guided libFuzzer
+        run: make -C c strata-libfuzzer
   offline-training:
     runs-on: ubuntu-latest
     steps:
@@ -48,5 +52,9 @@ jobs:
           python-version: '3.12'
       - name: Install optional CPU trainer
         run: python -m pip install -r experimental/strata/requirements-training.txt --index-url https://download.pytorch.org/whl/cpu
+      - name: Install optional CPU graph runners
+        run: python -m pip install -r experimental/strata/requirements-runtime.txt
       - name: Trace, identity, offset and independent-training tests
         run: make -C c strata-training-check
+      - name: Explicit provider and TPU refusal tests
+        run: make -C c strata-runtime-check

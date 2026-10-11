@@ -1,0 +1,5 @@
+# Optional CPU/export smoke dependencies; install accelerator builds separately.
+numpy>=1.26,<3
+onnx>=1.18,<2
+onnxruntime>=1.24,<2
+jax>=0.6,<0.7
