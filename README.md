@@ -73,6 +73,7 @@ make -C c strata-native-check   # native bank, CPU kernels, identity/protocol te
 [Integration roadmap](docs/strata-roadmap.md)
 · [Streaming runtime expansion](docs/runtime-expansion.md)
 · [Native C graph engine and SDK setup](docs/native-graph.md)
+· [Modular/Mojo integration target](docs/modular-mojo.md)
 
 Colibri's Apache-2.0 license and upstream history are retained. The implementation
 below is original; no Strata source or weights were copied. Strata is credited for

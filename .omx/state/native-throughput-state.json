@@ -1,7 +1,7 @@
 {
   "phase": "native-throughput",
-  "active": true,
-  "status": "in_progress",
+  "active": false,
+  "status": "handoff",
   "objective": "measurably faster native Colibri inference across all model families and qualified hardware",
   "first_family": "qwen36 dense CPU MTP qualified; OLMoE CPU cache8/16 prefetch measured",
   "runtime": "direct-serial",
@@ -44,7 +44,7 @@
     "scope": "CPU only; no new GPU DMA or all-family qualification",
     "default_reason": "user-directed Strata-style three-extra-token window; previous timings retained with explicit settings"
   },
-  "next_implementation": "draft-vocabulary projection and confidence-gated MTP chain, then native transfer/residency and other family adapters",
+  "next_implementation": "Locate existing Modular/Mojo native SDK/project and implement its C bridge; then continue actual Strata storage/transfer/family ports and qualification.",
   "graph_port": {
     "status": "published",
     "language": "C17 engine, native C SDK APIs; Python control plane only",
@@ -57,5 +57,13 @@
     "qualification": ".omx/research/native-graph-qualification.json",
     "speed_claim": "functional native conversion; no new throughput/power claim",
     "device_scope": "six CPU/GPU route replays; core SR placement verified, GenAI constructor selection only; NPU/TPU/AIPU physical full-model qualification pending"
+  },
+  "handoff_reason": "User requested wrap-up and specified Modular/Mojo hardware software stack; native graph slice published, integration location requested.",
+  "target_stack": {
+    "declared_by_user": "Modular Mojo for SSD/CPU/GPU/NPU/AIPU software stack",
+    "integration_boundary": "retain Colibri C core; native MAX C API or compiled Mojo C ABI",
+    "implemented": false,
+    "runtime_location": "requested from user; not found in checked checkout/Windows PATH/hardware venv/current Kali WSL",
+    "documentation": "docs/modular-mojo.md"
   }
 }

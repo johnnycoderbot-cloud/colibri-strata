@@ -1,5 +1,9 @@
 # Native C graph workloads
 
+The user's Modular/Mojo stack is recorded in the
+[native integration boundary](modular-mojo.md). This implemented graph backend
+uses OpenVINO C APIs; it has not been connected to Mojo/MAX.
+
 Text generation, speech recognition/English translation and trained 4× image
 upscaling now execute inside the persistent C native_graph process. Production
 routes call native OpenVINO/GenAI C APIs. WAV decoding, image tiling, BGR tensor

@@ -11,7 +11,7 @@
     "/root/memory_primitives": "C media tensor helpers",
     "/root": "native engine transport, control-plane wiring, integration and publication"
   },
-  "next_gate": "native graph port published; broader throughput/family/device goal remains active",
+  "next_gate": "Native OpenVINO graph port published; Modular/Mojo integration is a separate incomplete handoff.",
   "complete": true,
   "qualification": ".omx/research/native-graph-qualification.json",
   "review": "approved; independent backend/integration and Unicode corrections",
