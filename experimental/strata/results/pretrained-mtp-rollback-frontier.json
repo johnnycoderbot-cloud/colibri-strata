@@ -1,0 +1,222 @@
+{
+  "schema": "colibri.native-pretrained-mtp-frontier-correctness/v1",
+  "verdict": "approved",
+  "performance_evidence": false,
+  "authentic_pretrained_cell_requested": true,
+  "authentic_pretrained_cell_execution_observed": true,
+  "forced_proposals_correctness_only": true,
+  "selected_cases": [
+    "budget-clipped-verify",
+    "cancel-mid-verify",
+    "cycle-rejections",
+    "eos-mid-verify",
+    "first-reject",
+    "full-accept-next-proposal",
+    "middle-reject",
+    "precision-refusal",
+    "prefix-pin-restore",
+    "sample-fallback"
+  ],
+  "forced_oracle_scope": "initial prompt length only; continuation uses actual cell proposals",
+  "engine_sha256": "f574b7426ba77d616678b48a793fb6bddc80b91773014a4b2809415df893168e",
+  "native_fingerprint": "09270fb49fb801cc99dc6ce97b06aac331d0dcc7750223dd1d04e8e76c69fd78",
+  "mtp_identity": {
+    "model-mtp.safetensors": "bb2c1888cc073dfbad0b86a6e3701384561598dc6766132f0b0b8e19afbfce87",
+    "qwen36_mtp.json": "858cc5e47574ca4cb40f0cb2bce76fe183b6cc0182b9c502305a0326aac9899b"
+  },
+  "runtime_precision": "qwen36:DBITS=8;IDOT=1;kernel=cpu;tap=final-rmsnorm+next-embedding/v1",
+  "oracle_ids": [
+    20682,
+    2624,
+    369,
+    264,
+    15346,
+    7139,
+    11767,
+    1429,
+    303,
+    1423,
+    1472,
+    264
+  ],
+  "records": [
+    {
+      "name": "first-reject",
+      "tokens": 10,
+      "frontier_rows": 14,
+      "stats": {
+        "bank_calls": 8,
+        "bank_seconds": 0.170776,
+        "failures": 0,
+        "forwards": 9,
+        "tokens": 9,
+        "accepted": 0,
+        "drafts": 21,
+        "verifies": 8,
+        "ended_mid_verify": 0
+      },
+      "pretrained_mtp": true,
+      "mtp_depth": 3,
+      "forced_proposals_correctness_only": true
+    },
+    {
+      "name": "middle-reject",
+      "tokens": 10,
+      "frontier_rows": 14,
+      "stats": {
+        "bank_calls": 5,
+        "bank_seconds": 0.109436,
+        "failures": 0,
+        "forwards": 6,
+        "tokens": 9,
+        "accepted": 3,
+        "drafts": 13,
+        "verifies": 5,
+        "ended_mid_verify": 0
+      },
+      "pretrained_mtp": true,
+      "mtp_depth": 3,
+      "forced_proposals_correctness_only": true
+    },
+    {
+      "name": "cycle-rejections",
+      "tokens": 10,
+      "frontier_rows": 14,
+      "stats": {
+        "bank_calls": 6,
+        "bank_seconds": 0.136663,
+        "failures": 0,
+        "forwards": 7,
+        "tokens": 9,
+        "accepted": 2,
+        "drafts": 17,
+        "verifies": 6,
+        "ended_mid_verify": 0
+      },
+      "pretrained_mtp": true,
+      "mtp_depth": 3,
+      "forced_proposals_correctness_only": true
+    },
+    {
+      "name": "full-accept-next-proposal",
+      "tokens": 10,
+      "frontier_rows": 14,
+      "stats": {
+        "bank_calls": 3,
+        "bank_seconds": 0.081307,
+        "failures": 0,
+        "forwards": 4,
+        "tokens": 9,
+        "accepted": 5,
+        "drafts": 9,
+        "verifies": 3,
+        "ended_mid_verify": 0
+      },
+      "pretrained_mtp": true,
+      "mtp_depth": 3,
+      "forced_proposals_correctness_only": true
+    },
+    {
+      "name": "budget-clipped-verify",
+      "tokens": 4,
+      "frontier_rows": 8,
+      "stats": {
+        "bank_calls": 1,
+        "bank_seconds": 0.016184,
+        "failures": 0,
+        "forwards": 1,
+        "tokens": 3,
+        "accepted": 2,
+        "drafts": 2,
+        "verifies": 1,
+        "ended_mid_verify": 0
+      },
+      "pretrained_mtp": true,
+      "mtp_depth": 3,
+      "forced_proposals_correctness_only": true
+    },
+    {
+      "name": "prefix-pin-restore",
+      "tokens": 10,
+      "frontier_rows": 20,
+      "stats": {
+        "bank_calls": 3,
+        "bank_seconds": 0.071921,
+        "failures": 0,
+        "forwards": 4,
+        "tokens": 9,
+        "accepted": 5,
+        "drafts": 9,
+        "verifies": 3,
+        "ended_mid_verify": 0
+      },
+      "pretrained_mtp": true,
+      "mtp_depth": 3,
+      "forced_proposals_correctness_only": true
+    },
+    {
+      "name": "sample-fallback",
+      "tokens": 10,
+      "frontier_rows": 8,
+      "sample_fallback": true,
+      "pretrained_mtp": true,
+      "mtp_depth": 3,
+      "sample_token_ids_verified": false,
+      "sample_evidence_scope": "exact chosen logprob, top-token DATA, emitted bytes and hidden frontier; sampled chosen ID is absent from protocol"
+    },
+    {
+      "name": "cancel-mid-verify",
+      "emitted_tokens": 3,
+      "frontier_rows": 1,
+      "post_cancel_frontier_rows": 6,
+      "stats": {
+        "bank_calls": 1,
+        "bank_seconds": 0.027641,
+        "failures": 0,
+        "forwards": 1,
+        "tokens": 2,
+        "accepted": 1,
+        "drafts": 3,
+        "verifies": 1,
+        "ended_mid_verify": 1
+      },
+      "pretrained_mtp": true,
+      "forced_proposals_correctness_only": true
+    },
+    {
+      "name": "precision-refusal",
+      "setting": "COLI_DENSE_IDOT=0",
+      "exit_code": 1
+    },
+    {
+      "name": "precision-refusal",
+      "setting": "COLI_DENSE_BITS=4",
+      "exit_code": 1
+    },
+    {
+      "name": "precision-refusal",
+      "setting": "COLI_DENSE_I8=0",
+      "exit_code": 1
+    },
+    {
+      "name": "eos-mid-verify",
+      "tokens": 3,
+      "frontier_rows": 5,
+      "stats": {
+        "bank_calls": 2,
+        "bank_seconds": 0.050621,
+        "failures": 0,
+        "forwards": 2,
+        "tokens": 3,
+        "accepted": 1,
+        "drafts": 6,
+        "verifies": 2,
+        "ended_mid_verify": 1
+      },
+      "pretrained_mtp": true,
+      "mtp_depth": 3,
+      "forced_proposals_correctness_only": true
+    }
+  ],
+  "elapsed_seconds": 649.0939999999828
+}

@@ -58,6 +58,7 @@ typedef struct {
     double t_w[SPEC_MAX_DRAFTS + 2];
     double rho, rho_w;                        /* a row's extra cost relative to one row */
     double d[SPEC_NSRC], d_w[SPEC_NSRC];      /* seconds a source spends per draft past its first */
+    unsigned charge_first[SPEC_NSRC];       /* first draft also incurs this fee; default preserves existing engines */
     int picks[SPEC_NSRC];                     /* picks so far (the probe's clock) */
     int since_plain;                          /* forwards since the last plain step */
     int off;                                  /* 1: every proposal drafted in full (tests, fixed depths) */
@@ -136,7 +137,7 @@ static inline double spec_gate_value(const SpecGate *g, int src, int k, double *
     for (int j = 0; j < k && j < SPEC_MAX_DRAFTS; j++) { p *= g->acc[src][j]; e += p; }
     double cost = spec_gate_rows_cost(g, k + 1);
     if (g->d_w[src] > 0.0 && g->t_w[1] > 0.0 && g->t[1] > 0.0)
-        cost += (src == SPEC_SRC_PARALLEL ? 1 : k-1) * g->d[src] / g->t[1];
+        cost += (src == SPEC_SRC_PARALLEL ? 1 : k-1+(g->charge_first[src]!=0)) * g->d[src] / g->t[1];
     if (expect) *expect = e;
     return k > 0 ? e / cost : 1.0;
 }
@@ -179,7 +180,8 @@ static inline void spec_gate_describe(const SpecGate *g, int src, char *buf, siz
     for (int n = 2; n <= SPEC_MAX_DRAFTS + 1; n++)
         if (g->t_w[n] > 0.0) SPEC_PUT(" %d:%.2f", n, spec_gate_rows_cost(g, n));
     SPEC_PUT(", rho %.2f", g->rho);
-    if (g->d_w[src] > 0.0) SPEC_PUT(src == SPEC_SRC_PARALLEL ? ", %.1f ms per bank" : ", %.1f ms per extra draft", 1e3 * g->d[src]);
+    if (g->d_w[src] > 0.0) SPEC_PUT(src == SPEC_SRC_PARALLEL ? ", %.1f ms per bank" :
+        g->charge_first[src] ? ", %.1f ms per draft" : ", %.1f ms per extra draft", 1e3 * g->d[src]);
     SPEC_PUT(", acceptance by position");
     for (int j = 0; j < 5; j++) SPEC_PUT(" %.2f", g->acc[src][j]);
 #undef SPEC_PUT

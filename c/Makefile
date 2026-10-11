@@ -1331,6 +1331,12 @@ tests/test_qwen36_head_batch$(EXE): tests/test_qwen36_head_batch.c
 tests/test_qwen36_residual_anchor$(EXE): tests/test_qwen36_residual_anchor.c strata_native_heads.o
 	$(CC) $(NOCUDA_CFLAGS) $< strata_native_heads.o -o $@ $(NOCUDA_LDFLAGS)
 
+tests/test_qwen36_mtp_frontier$(EXE): tests/test_qwen36_mtp_frontier.c strata_native_heads.o
+	$(CC) $(NOCUDA_CFLAGS) $< strata_native_heads.o -o $@ $(NOCUDA_LDFLAGS)
+
+tests/test_qwen36_mtp$(EXE): tests/test_qwen36_mtp.c strata_native_heads.o
+	$(CC) $(NOCUDA_CFLAGS) $< strata_native_heads.o -o $@ $(NOCUDA_LDFLAGS)
+
 tests/test_qwen36_expert_chunks$(EXE): tests/test_qwen36_expert_chunks.c
 	$(CC) $(NOCUDA_CFLAGS) $< -o $@ $(NOCUDA_LDFLAGS)
 
@@ -3115,10 +3121,12 @@ strata-runtime-check:
 
 # Bounded native adapter tests; the real-model frontier harness is an explicit
 # operator run against a pinned checkpoint, not a synthetic throughput claim.
-strata-native-check: tests/test_strata_native_heads$(EXE) tests/test_qwen36_head_batch$(EXE) tests/test_qwen36_expert_chunks$(EXE) tests/test_spec_draft$(EXE) tests/test_strata_activation$(EXE) tests/test_idot_multi_rows$(EXE) tests/test_idot_wide$(EXE) tests/test_qwen36_residual_anchor$(EXE)
+strata-native-check: tests/test_strata_native_heads$(EXE) tests/test_qwen36_head_batch$(EXE) tests/test_qwen36_expert_chunks$(EXE) tests/test_spec_draft$(EXE) tests/test_strata_activation$(EXE) tests/test_idot_multi_rows$(EXE) tests/test_idot_wide$(EXE) tests/test_qwen36_residual_anchor$(EXE) tests/test_qwen36_mtp_frontier$(EXE) tests/test_qwen36_mtp$(EXE)
 	./tests/test_strata_native_heads$(EXE)
 	./tests/test_qwen36_head_batch$(EXE)
 	./tests/test_qwen36_residual_anchor$(EXE)
+	./tests/test_qwen36_mtp_frontier$(EXE)
+	./tests/test_qwen36_mtp$(EXE)
 	./tests/test_qwen36_expert_chunks$(EXE)
 	./tests/test_spec_draft$(EXE)
 	./tests/test_strata_activation$(EXE)
@@ -3128,6 +3136,7 @@ strata-native-check: tests/test_strata_native_heads$(EXE) tests/test_qwen36_head
 	$(PYTHON) -m unittest discover -s tests -p test_native_decode_bench.py -v
 	$(PYTHON) -m unittest discover -s tests -p test_capture_native_heads.py -v
 	$(PYTHON) -m unittest discover -s tests -p test_parallel_heads_cli.py -v
+	$(PYTHON) -m unittest discover -s tests -p test_sequential_mtp_cli.py -v
 	$(PYTHON) -m unittest discover -s tests -p test_native_optimization_bench.py -v
 	$(PYTHON) -m unittest discover -s tests -p test_native_head_frontier_harness.py -v
 
@@ -3137,6 +3146,10 @@ strata-native-sanitize:
 	$(ASAN_ENV) ./tests/test_strata_native_heads_sanitize$(EXE)
 	$(CC) $(NOCUDA_CFLAGS) $(ASAN_CFLAGS) tests/test_qwen36_residual_anchor.c tests/strata_native_heads_sanitize.o -o tests/test_qwen36_residual_anchor_sanitize$(EXE) $(NOCUDA_LDFLAGS) $(ASAN_LDFLAGS)
 	$(ASAN_ENV) ./tests/test_qwen36_residual_anchor_sanitize$(EXE)
+	$(CC) $(NOCUDA_CFLAGS) $(ASAN_CFLAGS) tests/test_qwen36_mtp_frontier.c tests/strata_native_heads_sanitize.o -o tests/test_qwen36_mtp_frontier_sanitize$(EXE) $(NOCUDA_LDFLAGS) $(ASAN_LDFLAGS)
+	$(ASAN_ENV) ./tests/test_qwen36_mtp_frontier_sanitize$(EXE)
+	$(CC) $(NOCUDA_CFLAGS) $(ASAN_CFLAGS) tests/test_qwen36_mtp.c tests/strata_native_heads_sanitize.o -o tests/test_qwen36_mtp_sanitize$(EXE) $(NOCUDA_LDFLAGS) $(ASAN_LDFLAGS)
+	$(ASAN_ENV) ./tests/test_qwen36_mtp_sanitize$(EXE)
 	$(CC) $(NOCUDA_CFLAGS) $(ASAN_CFLAGS) tests/test_qwen36_head_batch.c -o tests/test_qwen36_head_batch_sanitize$(EXE) $(NOCUDA_LDFLAGS) $(ASAN_LDFLAGS)
 	$(ASAN_ENV) ./tests/test_qwen36_head_batch_sanitize$(EXE)
 	$(CC) $(NOCUDA_CFLAGS) $(ASAN_CFLAGS) tests/test_qwen36_expert_chunks.c -o tests/test_qwen36_expert_chunks_sanitize$(EXE) $(NOCUDA_LDFLAGS) $(ASAN_LDFLAGS)

@@ -1,5 +1,22 @@
 # Benchmark protocol
 
+The complete CPU fork versus unchanged Colibri measures **1.1508 median paired
+decode ratio (+15.1%)**, with all 15 candidate pairs faster. Per-prompt paired
+medians are 1.1168/1.2044/1.1508; median arm rates 40.827 → 45.997 tokens/s.
+This comparison includes CPU ports plus pretrained sequential MTP. Same model,
+hardware, precision,64-token cap,lookup and alternating protocol as below.
+[Unchanged-stock comparison](../experimental/strata/results/pretrained-mtp-stock-comparison.json)
+
+The new pretrained sequential MTP trial achieves **1.1313 median paired decode
+ratio (+13.1%)** against the same optimized binary with MTP disabled. Median
+arm rates 41.241 → 46.657 tokens/s, all 15 candidate pairs faster, per-prompt
+paired medians 1.0735/1.1367/1.1373. Same native Qwen3.5-0.8B INT8/IDOT target,
+8 threads, lookup enabled, three local test requests, 64-token cap and five
+alternating pairs. Three separate numeric comparisons match exactly; measured
+draft/verification costs are included and no forced guesses run during timing.
+[Measurements](../experimental/strata/results/pretrained-mtp-depth1-comparison.json)
+[Implementation and reproduction](sequential-mtp.md)
+
 The subsequent fresh-prompt trial confirms a small CPU-port gain: **1.0331
 median paired decode ratio**, with heads off. Per-prompt medians are 1.0331,
 1.0720 and 1.0044. The same binary with the new rank24 residual bank enabled

@@ -39,6 +39,7 @@ class FakeEngine:
         rate += 2 * int(self.env["QWEN_PROJECTION_GROUP"])
         rate += 4 * int(self.env["COLI_IDOT_WIDE"])
         rate += bool(self.env["COLI_STRATA_HEADS"])
+        rate += 7 * bool(self.env["Q36_MTP"])
         result = {"request_id": rid, "tokens": 64, "engine_decode_tokens_per_second": rate,
                   "wall_seconds": 64 / rate + 0.1, "ttft_seconds": 0.1, "accept_seconds": 0.01,
                   "text": text, "output_sha256": hashlib.sha256(text.encode()).hexdigest(),
@@ -47,6 +48,8 @@ class FakeEngine:
                   "numeric_evidence": []}
         if self.owner.fault:
             self.owner.fault(self, prompt, logprobs, result)
+        if self.env["Q36_MTP"] and not self.owner.missing_mtp_evidence:
+            self.stderr.append(f"[qwen36 MTP] turn {rid}: bank_calls=1 bank_seconds=0.01 failures=0 forwards=32 tokens=63 accepted=8 drafts=16 verifies=8 ended_mid_verify=0\n")
         return result
 
     def close(self):
@@ -63,6 +66,7 @@ class Factory:
         self.fault = None
         self.close_fault = None
         self.creation_fault = None
+        self.missing_mtp_evidence = False
 
     def __call__(self, *args, **kwargs):
         if self.creation_fault:
@@ -88,6 +92,10 @@ class BenchmarkTest(unittest.TestCase):
         self.baseline.write_bytes(b"stock identity fixture")
         self.optimized.write_bytes(b"fork identity fixture")
         self.heads.write_bytes(b"head identity fixture")
+        self.mtp = self.root / "mtp-sidecar"
+        self.mtp.mkdir()
+        (self.mtp / "qwen36_mtp.json").write_text("{}", encoding="utf-8")
+        (self.mtp / "model-mtp.safetensors").write_bytes(b"MTP identity fixture")
         self.prompts = self.root / "prompts.json"
         self.prompt_values = ["held-out one", "held-out two", "held-out three"]
         self.prompts.write_text(json.dumps(self.prompt_values), encoding="utf-8")
@@ -173,6 +181,17 @@ class BenchmarkTest(unittest.TestCase):
             self.assertEqual(env["COLI_TIMERS"], "1")
             self.assertEqual(env["COLI_IDOT_WIDE"], "0")
 
+    def test_combined_mtp_uses_unchanged_stock_control_and_actual_candidate(self):
+        report=self.run_bench("--mtp-dir",str(self.mtp),"--studies","stock-mtp")
+        study=report["studies"][0]
+        self.assertEqual(study["control"]["engine"],str(self.baseline))
+        self.assertEqual(study["candidate"]["engine"],str(self.optimized))
+        self.assertFalse(study["control"]["pretrained_mtp"])
+        self.assertTrue(study["candidate"]["pretrained_mtp"])
+        self.assertTrue(study["pretrained_mtp_executed"])
+        self.assertEqual(study["control"]["env"]["Q36_MTP"],"")
+        self.assertTrue(study["candidate"]["env"]["Q36_MTP"])
+
     def test_wide_ablation_is_independent_and_other_ablations_hold_wide_fixed(self):
         report = self.run_bench("--wide", "1", "--ablate-knobs", "--ablate-wide", "--heads", str(self.heads))
         self.assertEqual(report["settings"]["studies"], ["stock", "rows", "group", "wide", "heads"])
@@ -205,11 +224,47 @@ class BenchmarkTest(unittest.TestCase):
         self.assertEqual(study["candidate"]["env"]["COLI_IDOT_WIDE"], "1")
 
     def test_invalid_study_selection_never_claims_output_or_launches(self):
-        for selection in ("", "stock,stock", "stock,unknown", "stock, wide", "heads"):
+        for selection in ("", "stock,stock", "stock,unknown", "stock, wide", "heads", "mtp"):
             with self.subTest(selection=selection), self.assertRaises(ValueError):
                 self.run_bench("--studies", selection)
             self.assertFalse(self.output.exists())
         self.assertEqual(self.factory.engines, [])
+
+    def test_mtp_study_is_same_binary_with_depth_fixed_and_ambient_force_cleared(self):
+        with patch.dict(os.environ, {"Q36_MTP": "ambient-sidecar", "Q36_MTP_FORCE": "accept", "Q36_MTP_TEST_ORACLE": "oracle.json"}):
+            report = self.run_bench("--mtp-dir", str(self.mtp), "--mtp-drafts", "3", "--studies", "stock,mtp")
+        study = report["studies"][1]
+        self.assertTrue(study["pretrained_mtp_executed"])
+        self.assertEqual(study["control"]["engine"], study["candidate"]["engine"])
+        self.assertEqual({key for key in study["control"]["env"] if study["control"]["env"][key] != study["candidate"]["env"][key]}, {"Q36_MTP"})
+        for definition in report["studies"]:
+            for side in ("control", "candidate"):
+                env = definition[side]["env"]
+                self.assertEqual(env["Q36_MTP_DRAFTS"], "3")
+                self.assertEqual(env["Q36_MTP_FORCE"], "")
+                self.assertEqual(env["Q36_MTP_TEST_ORACLE"], "")
+        self.assertEqual(report["studies"][0]["candidate"]["env"]["Q36_MTP"], "")
+        self.assertEqual(len(study["records"]), 15)
+        self.assertEqual(study["records"][0]["candidate"]["native_mtp_statistics"]["bank_calls"], 1)
+        self.assertTrue(report["mtp_identity"]["manifest_sha256"])
+
+    def test_missing_mtp_execution_evidence_fails_instead_of_claiming_speedup(self):
+        self.factory.missing_mtp_evidence = True
+        with self.assertRaisesRegex(RuntimeError, "MTP execution evidence"):
+            self.run_bench("--mtp-dir", str(self.mtp), "--studies", "mtp")
+        report = self.failed_report()
+        self.assertEqual(report["studies"][0]["status"], "failed")
+
+    def test_mtp_asset_mutation_and_protected_report_path(self):
+        self.output = self.mtp / "report.json"
+        with self.assertRaisesRegex(ValueError, "outside model"):
+            self.run_bench("--mtp-dir", str(self.mtp), "--studies", "mtp")
+        self.assertEqual(self.factory.engines, [])
+        self.output = self.root / "report.json"
+        self.factory.close_fault = lambda engine: (self.mtp / "model-mtp.safetensors").write_bytes(b"mutated")
+        with self.assertRaisesRegex(RuntimeError, "MTP sidecar changed"):
+            self.run_bench("--mtp-dir", str(self.mtp), "--studies", "mtp")
+        self.failed_report()
 
     def test_wsl_bank_path_and_source_description_are_recorded(self):
         report = self.run_bench("--wsl", "kali-pc", "--heads", str(self.heads),
@@ -340,6 +395,16 @@ class BenchmarkTest(unittest.TestCase):
 
 
 class ProfileTest(unittest.TestCase):
+    def test_mtp_statistics_require_complete_consistent_finite_contract(self):
+        line = "[qwen36 MTP] turn bench1: bank_calls=1 bank_seconds=0.01 failures=0 forwards=32 tokens=63 accepted=8 drafts=16 verifies=8 ended_mid_verify=0"
+        self.assertEqual(bench.mtp_statistics([line])["bench1"]["accepted"], 8)
+        for lines in ([line, line], [line.replace("accepted=8", "accepted=17")],
+                      [line.replace("bank_seconds=0.01", "bank_seconds=nan")],
+                      [line.replace("bank_seconds=0.01", "bank_seconds=1e999")], [line + " ignored"],
+                      [line.replace("ended_mid_verify=0", "ended_mid_verify=2")]):
+            with self.subTest(lines=lines), self.assertRaises(ValueError):
+                bench.mtp_statistics(lines)
+
     def test_actual_protocol_layout_and_bad_counters(self):
         result = bench.parse_profile(b"PROF 1.5 12 64 0.01 0.02 0.3 0.4 0.5 32\n")
         self.assertEqual(result["prompt_tokens"], 12)

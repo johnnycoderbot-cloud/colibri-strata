@@ -1,0 +1,61 @@
+{
+  "schema": "colibri.qwen-mtp-kernel-oracle/v1",
+  "scope": "Pretrained cell math qualification with captured inputs at a synthetic prefix; no throughput claim",
+  "source_revision": "2fc06364715b967f1860aea9cf38778875588b17",
+  "sidecar_sha256": "bb2c1888cc073dfbad0b86a6e3701384561598dc6766132f0b0b8e19afbfce87",
+  "native_runtime_fingerprint": "47cc39a0ecb84ce1ce7777c803a7e0fabc3ba75aac34e6d25a0735cc37bb435d",
+  "fixture": "authentic-mtp-cell-oracle.bin",
+  "fixture_sha256": "3c14955b395ae778abd5da407e858e8e68cf6e0923c7b423e1f3fe35ddd10929",
+  "fixture_scope": {
+    "captured_pairs": 8,
+    "positions": "rebased0..7; synthetic prefix",
+    "pretrained_tensors": 15,
+    "selected_lm_rows": 37,
+    "target_hidden": "post_final_norm",
+    "next_embedding": "actual target-selected token embedding",
+    "hidden_size": 1024,
+    "query_width": 2048,
+    "intermediate_size": 3584,
+    "head_dim": 256,
+    "kv_heads": 2
+  },
+  "oracle": "independent Torch highest-FP32; true INT8 row/activation codes for8-bit source",
+  "native_max_abs_error": {
+    "cell_bits32": {
+      "normalized_hidden": 1.525879e-05,
+      "selected_logits": 1.001358e-05,
+      "kv": 5.185604e-06
+    },
+    "cell_bits8": {
+      "normalized_hidden": 3.933907e-06,
+      "selected_logits": 3.814697e-06,
+      "kv": 1.430511e-06
+    }
+  },
+  "scalar_max_abs_error": {
+    "cell_bits32": {
+      "normalized_hidden": 1.549721e-05,
+      "selected_logits": 9.536743e-06,
+      "kv": 5.00679e-06
+    },
+    "cell_bits8": {
+      "normalized_hidden": 4.768372e-06,
+      "selected_logits": 3.814697e-06,
+      "kv": 1.430511e-06
+    }
+  },
+  "checks_passed": [
+    "small independent Torch fixture both8/32",
+    "real pretrained tensors numerical fixture both8/32",
+    "KV-only vsfullcache exact bytes",
+    "two-KV-head capacity-growth stride preservation",
+    "finite inputs/outputs and output disjointness",
+    "all-or-none outputs/valid prefix",
+    "bound native fingerprint/sidecarhash/tensorgeometry",
+    "malformed metadata/header, escaped NUL, NaN, overlap, trailing bytes",
+    "target tamper and source corruption refusal",
+    "FIFO rejection",
+    "ASan/UBSan default fixture plus loader suite"
+  ],
+  "full_native_runtime_and_model_performance": "Separate parent-run qualification"
+}

@@ -8,6 +8,7 @@ on:
       - 'c/strata_native_heads.c'
       - 'c/qwen36.c'
       - 'c/qwen36_strata.h'
+      - 'c/qwen36_mtp*.h'
       - 'c/spec_draft.h'
       - 'c/idot.h'
       - 'c/tools/native_optimization_bench.py'
@@ -20,6 +21,8 @@ on:
       - 'c/tests/*frontier*'
       - 'c/tests/test_qwen36_*'
       - 'c/tests/test_convert_qwen36_tied.py'
+      - 'c/tests/test_convert_qwen36_mtp.py'
+      - 'c/tests/test_sequential_mtp_cli.py'
       - 'c/tests/*strata*'
       - 'c/Makefile'
       - 'c/coli'
@@ -34,6 +37,7 @@ on:
       - 'c/strata_native_heads.c'
       - 'c/qwen36.c'
       - 'c/qwen36_strata.h'
+      - 'c/qwen36_mtp*.h'
       - 'c/spec_draft.h'
       - 'c/idot.h'
       - 'c/tools/native_optimization_bench.py'
@@ -46,6 +50,8 @@ on:
       - 'c/tests/*frontier*'
       - 'c/tests/test_qwen36_*'
       - 'c/tests/test_convert_qwen36_tied.py'
+      - 'c/tests/test_convert_qwen36_mtp.py'
+      - 'c/tests/test_sequential_mtp_cli.py'
       - 'c/tests/*strata*'
       - 'c/Makefile'
       - 'c/coli'
@@ -107,5 +113,6 @@ jobs:
         run: |
           python -m pip install safetensors numpy
           PYTHONPATH=c python -m unittest discover -s c/tests -p test_convert_qwen36_tied.py -v
+          PYTHONPATH=c python -m unittest discover -s c/tests -p test_convert_qwen36_mtp.py -v
       - name: Explicit provider and TPU refusal tests
         run: make -C c strata-runtime-check

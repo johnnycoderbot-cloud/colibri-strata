@@ -2,6 +2,7 @@
 import copy
 import importlib.util
 import math
+import json
 from pathlib import Path
 import struct
 import tempfile
@@ -94,6 +95,10 @@ class PreflightTest(unittest.TestCase):
         self.model.mkdir()
         self.engine = self.root / "native"
         self.engine.write_bytes(b"no execution fixture")
+        self.mtp = self.root / "mtp-sidecar"
+        self.mtp.mkdir()
+        (self.mtp / "qwen36_mtp.json").write_text("{}", encoding="utf-8")
+        (self.mtp / "model-mtp.safetensors").write_bytes(b"identity fixture")
 
     def argv(self, *extra):
         return ["--engine", str(self.engine), "--model", str(self.model),
@@ -136,6 +141,69 @@ class PreflightTest(unittest.TestCase):
         self.assertEqual(env["COLI_STRATA_HEADS"], "")
         self.assertEqual(env["COLI_STRATA_TRACE"], "")
         self.assertEqual(env["COLI_LOOKUP_FORCE"], "")
+        self.assertEqual(env["Q36_MTP"], "")
+        self.assertEqual(env["Q36_MTP_FORCE"], "")
+        self.assertEqual(env["Q36_MTP_TEST_ORACLE"], "")
+
+    def test_mtp_mode_preflight_is_separate_from_residual_fixture_banks(self):
+        args = harness.parse_args(self.argv("--mtp-dir", str(self.mtp)))
+        self.assertEqual(args.selected_cases, set(harness.MTP_CASE_NAMES))
+        with self.assertRaisesRegex(AssertionError, "separate"):
+            harness.parse_args(self.argv("--mtp-dir", str(self.mtp), "--bank-kind", "logit-residual"))
+        with self.assertRaisesRegex(AssertionError, "outside MTP"):
+            harness.parse_args(self.argv("--mtp-dir", str(self.mtp), "--work", str(self.mtp / "work")))
+        self.assertFalse((self.root / "new-work").exists())
+
+    def test_mtp_driver_sets_only_authentic_adapter_and_explicit_test_controls(self):
+        args = SimpleNamespace(engine=self.engine, model=self.model, work=self.root, threads=8,
+                               wsl="kali-pc", mtp_dir=self.mtp, mtp_drafts=3)
+        oracle = self.root / "oracle.json"
+        with patch.object(harness, "NativeEngine") as engine:
+            harness.Driver(args, "mtp", mtp=True, force="row2", oracle=oracle, depth=2)
+        env = engine.call_args.args[3]
+        self.assertEqual(env["Q36_MTP"], harness.linux_path(self.mtp))
+        self.assertEqual(env["Q36_MTP_DRAFTS"], "2")
+        self.assertEqual(env["Q36_MTP_FORCE"], "row2")
+        self.assertEqual(env["Q36_MTP_TEST_ORACLE"], harness.linux_path(oracle))
+        self.assertEqual(env["COLI_STRATA_HEADS"], "")
+        with patch.object(harness, "NativeEngine") as engine, self.assertRaisesRegex(AssertionError, "separate"):
+            harness.Driver(args, "invalid", self.root / "bank.snh", mtp=True)
+        engine.assert_not_called()
+
+    def test_mtp_oracle_preserves_generation_offset_and_greedy_count_evidence(self):
+        args = SimpleNamespace(work=self.root)
+        truth = {"ids": [31, 41, 59], "prompt_tokens": 65, "token_ids_verified": True}
+        path = harness.mtp_oracle(args, "oracle", truth)
+        self.assertEqual(json.loads(path.read_text()), {"prompt_tokens": 65, "tokens": [31, 41, 59]})
+        eos = harness.mtp_oracle(args, "eos", truth, 123)
+        self.assertEqual(json.loads(eos.read_text())["tokens"], [31, 41, 59, 123])
+        for changed in ({**truth, "token_ids_verified": False}, {**truth, "prompt_tokens": None},
+                        {**truth, "ids": [True]}, {**truth, "ids": []}):
+            with self.subTest(changed=changed), self.assertRaises(AssertionError):
+                harness.mtp_oracle(args, "invalid", changed)
+        self.assertFalse((self.root / "invalid.json").exists())
+        with self.assertRaises(FileExistsError):
+            harness.mtp_oracle(args, "oracle", truth)
+
+    def test_mtp_case_routing_separates_real_depths_from_forced_rollback_fixtures(self):
+        args = SimpleNamespace(work=self.root, mtp_drafts=1,
+                               selected_cases={"first-reject", "middle-reject", "full-accept-next-proposal",
+                                               "cycle-rejections", "budget-clipped-verify", "actual-depth1", "actual-depth2", "actual-depth3"})
+        truth = {"ids": list(range(12)), "prompt_tokens": 65, "token_ids_verified": True}
+        with patch.object(harness, "paired_case", side_effect=lambda *a, **k: {"name": a[1]}) as paired:
+            records = harness.mtp_cases(args, {}, truth)
+        self.assertEqual(len(records), 8)
+        calls = {call.args[1]: call.kwargs for call in paired.call_args_list}
+        self.assertEqual(calls["first-reject"]["force"], "row1")
+        self.assertEqual(calls["middle-reject"]["force"], "row2")
+        self.assertEqual(calls["cycle-rejections"]["force"], "cycle")
+        self.assertEqual(calls["budget-clipped-verify"]["depth"], 3)
+        for depth in (1, 2, 3):
+            settings = calls[f"actual-depth{depth}"]
+            self.assertEqual(settings["depth"], depth)
+            self.assertEqual(settings["force"], "")
+            self.assertIsNone(settings["oracle"])
+        self.assertTrue(all(settings["mtp"] for settings in calls.values()))
 
 
 if __name__ == "__main__":

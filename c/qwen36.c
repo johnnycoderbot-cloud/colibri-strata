@@ -4366,7 +4366,11 @@ static int    g_pin_use_logit = 0;   /* 1 quando questa richiesta e ripartita da
 /* Lo stato che questo motore deve fotografare oltre alle righe K/V: la
  * ricorrenza e la finestra di convoluzione di ogni strato DeltaNet. Sono
  * decine di MB per scatto, quindi COLI_PIN_SLOTS conta davvero qui. */
-typedef struct { float **rec, **conv; int n_layers; } Q36PinState;
+typedef struct { float **rec, **conv; int n_layers;
+#ifdef COLI_STRATA_NATIVE
+    void *mtp;
+#endif
+} Q36PinState;
 
 /* Stato della lettura del prefill: dichiarato qui perche step() lo consulta e
  * step() viene prima del codice di servizio che lo accende. Solo il servizio
@@ -4384,6 +4388,7 @@ static float *g_hidden_sink = NULL;
 static int g_q36_mux_slots;
 static int q36_has_clef_head(const char *);
 #include "qwen36_strata.h"
+#include "qwen36_mtp_runtime.h"
 #endif
 
 #ifdef COLI_VULKAN
@@ -4463,6 +4468,7 @@ static float *step_ex(Model *m, const int *ids, int S, int pos_base, int nlogits
     }
 #ifdef COLI_STRATA_NATIVE
     q36_sn_capture(m,x,ids,S,pos_base);
+    q36_mp_capture(m,x,ids,S,pos_base);
 #endif
     /* Recorded HERE, where the tokens actually entered the state, rather than
      * derived from the caller's bookkeeping: the invariant that fed[0..len-1]
@@ -4773,6 +4779,9 @@ static void q36_pin_state_free(void *v){
         if (st->rec)  free(st->rec[i]);
         if (st->conv) free(st->conv[i]);
     }
+#ifdef COLI_STRATA_NATIVE
+    q36_mp_saved_free(st->mtp);
+#endif
     free(st->rec); free(st->conv); free(st);
 }
 
@@ -4810,6 +4819,13 @@ static Q36PinState *q36_pin_state_save(Model *m, Q36PinState *reuse){
         if (m->DN_rec[i]  && st->rec[i])  memcpy(st->rec[i],  m->DN_rec[i],  nr * sizeof(float));
         if (m->DN_conv[i] && st->conv[i]) memcpy(st->conv[i], m->DN_conv[i], nc * sizeof(float));
     }
+#ifdef COLI_STRATA_NATIVE
+    if(g_q36_mtp) {
+        Q36MtpSaved *saved=q36_mp_save(st->mtp);
+        if(!saved){q36_pin_state_free(st);return NULL;}
+        st->mtp=saved;
+    }
+#endif
     return st;
 }
 
@@ -4819,8 +4835,8 @@ static void pin_save(Model *m, const int *ids, int n, const float *logit){
     ColiPin *k = coli_pin_store(&g_pins, ids, n, logit);
     if (!k) return;                       /* ottimizzazione, mai un errore */
     Q36PinState *st = q36_pin_state_save(m, (Q36PinState *)k->state);
-    if (!st) { k->len = 0; return; }      /* senza stato lo scatto sarebbe una bugia */
     k->state = st;
+    if (!st) { k->len = 0; return; }      /* senza stato lo scatto sarebbe una bugia */
     fprintf(stderr, "[PIN] scatto a %d token\n", n); fflush(stderr);
 }
 
@@ -4842,6 +4858,13 @@ static int pin_restore(Model *m, const int *ids, int n){
         ColiPin *k = &g_pins.slot[s];
         Q36PinState *st = (Q36PinState *)k->state;
         if (st && kv_prefix_holds(&m->kvp, k->ids, k->len)) {
+#ifdef COLI_STRATA_NATIVE
+            if(!q36_mp_restore(st->mtp)) {
+                /* Target snapshot remains exact; the drafter waits for a
+                 * complete fresh target prefix before proposing again. */
+                fprintf(stderr,"[qwen36 MTP] pin drafter state unavailable; target-only until rebuilt\n");
+            }
+#endif
             for (int i = 0; i < c->n_layers; i++){
                 if (c->is_attn[i]) continue;
                 if (m->DN_rec[i]  && st->rec[i])  memcpy(m->DN_rec[i],  st->rec[i],  nr * sizeof(float));
@@ -4870,6 +4893,9 @@ static void reset_recurrent(Model *m){
      * forget what it was built from, or the two disagree in favour of the one
      * nobody can check. */
     kv_prefix_clear(&m->kvp);
+#ifdef COLI_STRATA_NATIVE
+    q36_mp_reset();
+#endif
     for (int i = 0; i < c->n_layers; i++){
         if (c->is_attn[i]) continue;
         if (m->DN_rec[i])  memset(m->DN_rec[i],  0, (size_t)c->dn_vheads * c->dn_kdim * c->dn_vdim * sizeof(float));
@@ -4895,6 +4921,11 @@ static void ensure_kv(Model *m){
          * earlier turn wrote, so the stride has to stay the one they were
          * written with: the allocation's, which is kv_cap. */
         m->max_t = m->kv_cap;
+#ifdef COLI_STRATA_NATIVE
+        if(g_q36_mtp && !q36_mtp_reserve(g_q36_mtp,m->kv_cap)) {
+            fprintf(stderr,"[qwen36 MTP] KV capacity refused\n");exit(1);
+        }
+#endif
         return;
     }
     /* Growth COPIES the rows instead of discarding them. A chat resends a
@@ -4941,6 +4972,11 @@ static void ensure_kv(Model *m){
 #endif
     m->attn_sc = falloc((int64_t)m->attn_sc_thr * m->max_t);
     m->kv_cap = m->max_t;
+#ifdef COLI_STRATA_NATIVE
+    if(g_q36_mtp && !q36_mtp_reserve(g_q36_mtp,m->kv_cap)) {
+        fprintf(stderr,"[qwen36 MTP] KV capacity refused\n");exit(1);
+    }
+#endif
     /* The record describes those same positions, so it survives with them. If
      * its own allocation fails, reuse simply stops: this is an optimisation and
      * must never be the reason a turn fails. */
@@ -4992,6 +5028,10 @@ typedef struct {
     float *ahead_hidden;
     uint64_t bank_calls, bank_failures;
     double bank_seconds;
+    int mtp, mtp_force_active;
+    float *ahead_mtp;
+    uint64_t mtp_calls, mtp_failures;
+    double mtp_seconds;
 } Q36Spec;
 static const int *g_q36_oracle; static int g_q36_oracle_n;   /* ref.json's full ids (COLI_LOOKUP_FORCE) */
 
@@ -5010,6 +5050,8 @@ static void q36_spec_begin(Model *m, Q36Spec *sp, const int *prompt, int np) {
     memset(sp, 0, sizeof *sp);
 #ifdef COLI_STRATA_NATIVE
     sp->heads = g_sn_bank != NULL;
+    sp->mtp = g_q36_mtp != NULL;
+    sp->mtp_force_active = g_mp_force && (!g_mp_oracle || np==g_mp_oracle_prompt);
     g_sn_valid = 0; /* A new/pinned conversation never borrows another frontier. */
     g_sn_base_valid = 0;
     g_sn_generation++; g_sn_trace_active = 1;
@@ -5026,6 +5068,8 @@ static void q36_spec_begin(Model *m, Q36Spec *sp, const int *prompt, int np) {
     sp->force = q36_spec_force_mode(getenv("COLI_LOOKUP_FORCE"), &sp->force_row);
     e = getenv("COLI_SPEC_GATE");
     spec_gate_init(&sp->gate, e && *e == '0');
+    /* This CPU adapter pays for the first draft's output projection too. */
+    sp->gate.charge_first[SPEC_SRC_MTP]=1;
     if (sp->lookup && (qt_ready() || g_cache_route || qq_active() || m->dn_dev)) {
         static int said;
         if (!said && asked) {   /* the default stays quiet: nothing was asked for */
@@ -5044,7 +5088,8 @@ static void q36_spec_begin(Model *m, Q36Spec *sp, const int *prompt, int np) {
     }
 }
 
-static void q36_spec_free(Q36Spec *sp) { free(sp->hist); free(sp->ahead_hidden); sp->ahead_hidden=NULL; sp->hist = NULL; sp->hist_n = sp->hist_cap = 0; }
+static void q36_spec_free(Q36Spec *sp) { free(sp->hist); free(sp->ahead_hidden);free(sp->ahead_mtp);
+    sp->ahead_hidden=sp->ahead_mtp=NULL; sp->hist = NULL; sp->hist_n = sp->hist_cap = 0; }
 
 /* Copy slots for a verify of up to rows+1 rows, allocated the first time they are
  * needed. 0 = out of memory (the caller takes a plain step). */
@@ -5083,8 +5128,12 @@ static void q36_spec_rollback(Model *m, int len, int keep) {
 static void q36_spec_settle(Model *m, Q36Spec *sp, int keep, int rejected) {
     if (keep < sp->ahead_n) q36_spec_rollback(m, sp->ahead_pos + keep, keep);
     spec_gate_result(&sp->gate, sp->ahead_src, keep - 1 + (rejected ? 1 : 0), keep - 1);
+#ifdef COLI_STRATA_NATIVE
+    if(sp->ahead_mtp)q36_mp_settle(sp->ahead_mtp,sp->ids,sp->ahead_pos,keep);
+#endif
     free(sp->ahead_logit); sp->ahead_logit = NULL; sp->ahead_n = sp->ahead_i = 0;
     free(sp->ahead_hidden); sp->ahead_hidden = NULL;
+    free(sp->ahead_mtp);sp->ahead_mtp=NULL;
 }
 
 /* The oracle's token at draft row j (1-based) of a verify at pos, or a wrong one at
@@ -5108,6 +5157,40 @@ static void q36_spec_hist_push(Q36Spec *sp, int tok, int pos) {
     if (pos > sp->hist_n) { sp->lookup = 0; return; }   /* a gap: the caller's history is not ours */
     sp->hist[pos] = tok; sp->hist_n = pos + 1;
 }
+#ifdef COLI_STRATA_NATIVE
+static int q36_mtp_forced(const Q36Spec *sp,int k,int j,int pos,int V) {
+    if(!sp->mtp_force_active)return -1;
+    int at=pos+j,truth=-1;
+    if(g_mp_oracle) {
+        at-=g_mp_oracle_prompt;
+        if(at>=0 && at<g_mp_oracle_n)truth=g_mp_oracle[at];
+    } else if(at>=0 && at<g_q36_oracle_n)truth=g_q36_oracle[at];
+    if(truth<0)return -1;
+    int wrong=g_mp_force=='c'?(int)(sp->verifies%(uint64_t)(k+1))+1:
+              g_mp_force=='w'?g_mp_force_row:0;
+    return j==wrong?(truth+1)%V:truth;
+}
+static int q36_mtp_propose(Model *m,Q36Spec *sp,int tok,int pos,int wanted,int *drafts) {
+    double start=now_s();float *current=g_mp_chain,*next=g_mp_chain+g_mp_h;
+    int canonical=g_mp_len,ok=q36_mp_take(tok,current,g_mp_logit),count=0;
+    if(ok) {
+        canonical=g_mp_len;
+        for(int j=0;j<wanted;j++) {
+            int best=0;for(int v=1;v<m->c.vocab;v++)if(g_mp_logit[v]>g_mp_logit[best])best=v;
+            int forced=q36_mtp_forced(sp,wanted,j+1,pos,m->c.vocab);
+            drafts[j]=forced>=0?forced:best;count++;
+            if(j+1<wanted) {
+                if(!q36_mtp_predict_one(g_q36_mtp,current,drafts[j],pos+j,next,g_mp_logit)) {ok=0;break;}
+                float *swap=current;current=next;next=swap;
+            }
+        }
+    }
+    q36_mtp_truncate(g_q36_mtp,canonical);
+    double elapsed=now_s()-start;sp->mtp_calls++;sp->mtp_seconds+=elapsed;
+    if(ok && count)spec_gate_draft_cost(&sp->gate,SPEC_SRC_MTP,elapsed/count);
+    if(!ok){sp->mtp_failures++;return 0;}return count;
+}
+#endif
 
 /* The logits that follow `tok`, fed at `pos`, exactly as step(m,&tok,1,pos) gives
  * them; `more` is how many tokens the caller may still want after `tok`. The
@@ -5140,13 +5223,25 @@ static float *q36_spec_step(Model *m, Q36Spec *sp, int tok, int pos, int more) {
         }
         q36_spec_settle(m, sp, i, 1);
     }
+    /* Measure one real plain step before pricing the first MTP projection.
+     * A drafter ready directly after prefill otherwise has no T(1) sample,
+     * so the shared gate cannot include its measured draft fee. */
+    if(sp->mtp && !sp->gate.off && sp->gate.t_w[1]==0) {
+        sp->forwards++;double start=now_s();float *plain=step(m,&tok,1,pos);
+        spec_gate_forward(&sp->gate,1,now_s()-start);return plain;
+    }
     int room = more - 1;
     if (room > sp->lookup_max) room = sp->lookup_max;
     if (pos + room >= m->kv_cap) room = m->kv_cap - 1 - pos;
     int d[Q36_SPEC_ROWS], k = 0;
     int src = SPEC_SRC_LOOKUP;
 #ifdef COLI_STRATA_NATIVE
-    if (sp->heads && room>0 && g_sn_valid && g_sn_pos==pos-1 && !m->vis_rows_n &&
+    if(sp->mtp && room>0 && q36_mp_ready(pos) && !m->vis_rows_n) {
+        int available=room<g_mp_depth?room:g_mp_depth;
+        int wanted=spec_gate_pick(&sp->gate,SPEC_SRC_MTP,available,NULL);
+        if(wanted>0){k=q36_mtp_propose(m,sp,tok,pos,wanted,d);if(k)src=SPEC_SRC_MTP;}
+    }
+    if (!k && sp->heads && room>0 && g_sn_valid && g_sn_pos==pos-1 && !m->vis_rows_n &&
         (!g_sn_residual || (g_sn_base_valid && g_sn_base_pos==g_sn_pos))) {
         int available=(int)g_sn_info.head_count;
         if (available>room) available=room;
@@ -5182,9 +5277,23 @@ static float *q36_spec_step(Model *m, Q36Spec *sp, int tok, int pos, int more) {
     }
     int S = k + 1;
 #ifdef COLI_STRATA_NATIVE
+    if(g_q36_mtp) {
+        if(q36_mp_ready(pos) && !q36_mp_take(tok,NULL,NULL))q36_mp_reset();
+        if(g_mp_len!=pos) {
+            sp->forwards++;double start=now_s();float *plain=step(m,&tok,1,pos);
+            spec_gate_forward(&sp->gate,1,now_s()-start);return plain;
+        }
+        sp->ahead_mtp=malloc((size_t)S*g_mp_h*sizeof(float));
+        if(!sp->ahead_mtp) {
+            sp->forwards++;double start=now_s();float *plain=step(m,&tok,1,pos);
+            spec_gate_forward(&sp->gate,1,now_s()-start);return plain;
+        }
+        g_mp_capture_rows=S;
+    }
     if (g_sn_frontier) {
         sp->ahead_hidden=(float*)malloc((size_t)k*g_sn_h*sizeof(float));
         if (!sp->ahead_hidden) {
+            free(sp->ahead_mtp);sp->ahead_mtp=NULL;g_mp_capture_rows=0;
             sp->forwards++; double start=now_s(); float *plain=step(m,&tok,1,pos);
             spec_gate_forward(&sp->gate,1,now_s()-start); return plain;
         }
@@ -5196,6 +5305,8 @@ static float *q36_spec_step(Model *m, Q36Spec *sp, int tok, int pos, int more) {
     double t0 = now_s();
     float *logit = step_ex(m, sp->ids, S, pos, S);
 #ifdef COLI_STRATA_NATIVE
+    g_mp_capture_rows=0;
+    if(sp->ahead_mtp)memcpy(sp->ahead_mtp,g_mp_rows,(size_t)S*g_mp_h*sizeof(float));
     g_sn_capture_rows=0;
     if (sp->ahead_hidden) {
         memcpy(g_sn_frontier,g_sn_rows,(size_t)g_sn_h*sizeof(float));
@@ -5223,6 +5334,17 @@ static void q36_spec_end(Model *m, Q36Spec *sp) {
 }
 
 static void q36_spec_report(const Q36Spec *sp, const char *scope) {
+    if(sp->mtp) {
+        fprintf(stderr,"[qwen36 MTP] %s: bank_calls=%llu bank_seconds=%.6f failures=%llu forwards=%llu tokens=%llu accepted=%llu drafts=%llu verifies=%llu ended_mid_verify=%d\n",
+            scope,(unsigned long long)sp->mtp_calls,sp->mtp_seconds,(unsigned long long)sp->mtp_failures,
+            (unsigned long long)sp->forwards,(unsigned long long)sp->tokens,(unsigned long long)sp->accepted,
+            (unsigned long long)sp->drafts,(unsigned long long)sp->verifies,sp->ended_ahead);
+        char detail[512];spec_gate_describe(&sp->gate,SPEC_SRC_MTP,detail,sizeof detail);
+        fprintf(stderr,"[qwen36 MTP gate] %s: %s | judged/accepted by offset",scope,detail);
+        for(int j=0;j<SPEC_MAX_DRAFTS;j++)if(sp->gate.prop[SPEC_SRC_MTP][j])
+            fprintf(stderr," %d:%llu/%llu",j+2,(unsigned long long)sp->gate.prop[SPEC_SRC_MTP][j],(unsigned long long)sp->gate.hit[SPEC_SRC_MTP][j]);
+        fprintf(stderr," | declined=%llu probes=%llu\n",(unsigned long long)sp->gate.declined[SPEC_SRC_MTP],(unsigned long long)sp->gate.probes[SPEC_SRC_MTP]);
+    }
     if (sp->heads) {
         fprintf(stderr,"[qwen36 strata] %s: bank_calls=%llu bank_seconds=%.6f failures=%llu forwards=%llu tokens=%llu accepted=%llu drafts=%llu verifies=%llu ended_mid_verify=%d\n",
                 scope,(unsigned long long)sp->bank_calls,sp->bank_seconds,(unsigned long long)sp->bank_failures,
@@ -5727,7 +5849,7 @@ static void serve_one(Model *m, ServeReq *q){
     double t0=clk.t0;
     unsigned char sbuf[16]; int sbn=0;
     Q36Spec spec; q36_spec_begin(m, &spec, ids, np);   /* COLI_LOOKUP=1: drafts, every token still sampled from the exact logits */
-    if (q->temp>0) spec.heads=0; /* sampled head/RNG contract is not qualified yet */
+    if (q->temp>0) {spec.heads=0;spec.mtp=0;} /* sampled head/RNG contract is not qualified yet */
     for(int s=0;s<q->max_tok;s++){
         int tk = serve_sample(lo, m->c.vocab, q->temp, q->top_p);
         /* La coda si calcola PRIMA della free: dopo, lo non c'e piu. */
@@ -6900,9 +7022,13 @@ int main(int argc, char **argv) {
      * exactly like argv runs, and serve_loop never returns. */
 #ifdef COLI_STRATA_NATIVE
     q36_sn_init(&m,snap,bits);
+    q36_mp_init(&m,snap);
 #else
     if (getenv("COLI_STRATA_HEADS") || getenv("COLI_STRATA_TRACE")) {
         fprintf(stderr,"[strata] this engine was built without native head support\n"); return 1;
+    }
+    if(getenv("Q36_MTP") && *getenv("Q36_MTP") && strcmp(getenv("Q36_MTP"),"0")) {
+        fprintf(stderr,"[qwen36 MTP] this build has no native MTP support\n");return 1;
     }
 #endif
     if (getenv("CLEF_RECORDS") || getenv("CLEF_TOKENIZE")) {

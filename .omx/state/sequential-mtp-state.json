@@ -1,0 +1,44 @@
+{
+  "phase": "sequential-mtp",
+  "active": false,
+  "status": "complete",
+  "runtime": "native-in-session",
+  "objective": "Use authentic pretrained sequential Strata-style MTP to accelerate Colibri and benchmark it",
+  "constraint_change": "User explicitly permits sequential drafting; independent parallel heads no longer required",
+  "checkpoint": "Qwen3.5-0.8B@2fc06364715b967f1860aea9cf38778875588b17",
+  "owners": {
+    "/root/architecture": "source semantics, runtime contracts and review",
+    "/root/memory_primitives": "opt-in sidecar converter and tests",
+    "/root/parallel_heads": "pretrained reference and CPU cell",
+    "/root": "decoder integration, correctness, benchmark and publication"
+  },
+  "next_gate": "remote CI pending; broader family/device rollout remains in native-throughput phase",
+  "complete": true,
+  "pretrained_quality": "194/279 correct offset2 predictions (69.5%) with actual pretrained cell and native INT8/IDOT LM reference; segment-only KV, full-prefix runtime still pending",
+  "sidecar": {
+    "file": "models-native/qwen35-08-mtp/model-mtp.safetensors",
+    "tensors": 15,
+    "bytes": 81813096,
+    "sha256": "bb2c1888cc073dfbad0b86a6e3701384561598dc6766132f0b0b8e19afbfce87",
+    "native_fingerprint": "47cc39a0ecb84ce1ce7777c803a7e0fabc3ba75aac34e6d25a0735cc37bb435d"
+  },
+  "qualification": "16convertertests;10C+74Pythoncombinednative; strict/scalar/sanitizers andrealweightoracle; actualdepth1/2/3 exactnativeoutputs; all realtargetforcedrollback/cancel/pin/EOS/precision gates;8dependency+2VKlink; independentreviewapproved",
+  "mtp_only_benchmark": {
+    "paired_median_ratio": 1.1313256225600736,
+    "baseline_median_tps": 41.241,
+    "candidate_median_tps": 46.657,
+    "pairs": 15,
+    "candidate_wins": 15,
+    "output_parity": true,
+    "all_asset_hashes_stable": true
+  },
+  "stock_comparison": {
+    "paired_median_ratio": 1.1508315575477013,
+    "baseline_median_tps": 40.827,
+    "candidate_median_tps": 45.997,
+    "pairs": 15,
+    "candidate_wins": 15,
+    "output_parity": true,
+    "all_asset_hashes_stable": true
+  }
+}

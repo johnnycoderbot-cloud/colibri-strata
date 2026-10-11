@@ -1,11 +1,15 @@
 # Colibri-Strata
 
 A fork of [JustVugg/colibri](https://github.com/JustVugg/colibri) pursuing
-**independent parallel future-token heads** and Strata-inspired memory scheduling
+**pretrained speculative drafting** and Strata-inspired memory scheduling
 across every Colibri text-generation family.
 
-**Current status: experimental live parallel heads in the native qwen36 CPU
-decoder; other-family/device adapters remain pending.** The Strata-inspired CPU
+**Pretrained sequential MTP now accelerates the native qwen36 CPU decoder.**
+The complete Qwen3.5-0.8B CPU fork measured **+15.1% paired decoding speed over
+unchanged Colibri**. MTP alone adds **+13.1%** over the CPU-optimized decoder.
+Both 15-pair comparisons preserve identical greedy output and win every pair.
+[Sequential MTP setup and measurements](docs/sequential-mtp.md).
+Other-family/device qualification remains pending. The Strata-inspired CPU
 ports measured **+1.3% and +3.3%** paired median decode gains in two trials,
 with gains varying by workload. The new residual heads passed real-checkpoint
 rollback tests but made the same optimized decoder **2.9% slower** on fresh
@@ -14,6 +18,10 @@ prompts. They remain opt-in experiments.
 This fork does not promise 200 tokens/s or accelerated decoding across all families.
 
 Included now:
+
+- Authentic pretrained sequential MTP for qualified dense qwen36 CPU: separate
+  sidecar export, KV-only prefill/catch-up, causal verification and exact target
+  state retention. One-, two- and three-token draft windows are implemented.
 
 - Pure-C low-rank heads: each predicts a different future token from the **same**
   hidden vector, with OpenMP parallelism across heads and a scalar fallback.

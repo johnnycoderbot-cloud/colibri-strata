@@ -64,5 +64,21 @@
       "trained residual bank timing ongoing",
       "other-family/device execution pending"
     ]
+  },
+  {
+    "id": "pretrained-sequential-qwen-mtp",
+    "reviewer": "/root/architecture",
+    "status": "approved",
+    "scope": "authentic pretrained CPU cell, bounded sidecar loader, canonical/predicted KV, target pending rows, rollback/pin/cancel and first-draft fee",
+    "fixed_findings": [
+      "test oracle FIFO open",
+      "raw/escaped NUL input",
+      "shared-verifier counter scope"
+    ],
+    "qualification_limits": [
+      "dense qwen36 CPU INT8/IDOT oneKV greedy",
+      "depth1 performance measured; depth2/3 correctness measured",
+      "otherfamily/device rollout pending"
+    ]
   }
 ]

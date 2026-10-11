@@ -133,6 +133,17 @@ int main(void) {
     test_gate();
     {
         SpecGate g; spec_gate_init(&g,0);
+        spec_gate_forward(&g,1,0.1);spec_gate_forward(&g,2,0.15);
+        spec_gate_draft_cost(&g,SPEC_SRC_MTP,0.05);
+        CHECK(spec_gate_value(&g,SPEC_SRC_MTP,1,NULL)>1.0,"existing first-draft amortization retained");
+        g.charge_first[SPEC_SRC_MTP]=1;
+        CHECK(spec_gate_value(&g,SPEC_SRC_MTP,1,NULL)<1.0,"non-amortized first MTP draft can erase the gain");
+        spec_gate_forward(&g,3,0.2);
+        CHECK(fabs(spec_gate_value(&g,SPEC_SRC_MTP,2,NULL)-(1.0+0.8+0.8*0.6)/3.0)<1e-12,
+              "two paid MTP drafts include both output projections");
+    }
+    {
+        SpecGate g; spec_gate_init(&g,0);
         spec_gate_forward(&g,1,0.1); spec_gate_forward(&g,2,0.15); spec_gate_forward(&g,4,0.22);
         spec_gate_draft_cost(&g,SPEC_SRC_PARALLEL,0.02);
         for (int j=0;j<SPEC_MAX_DRAFTS;j++) g.acc[SPEC_SRC_PARALLEL][j]=1;

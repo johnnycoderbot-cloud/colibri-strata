@@ -1,7 +1,7 @@
 {
   "phase": "unbiased-native-optimizations",
-  "active": true,
-  "status": "in_progress",
+  "active": false,
+  "status": "superseded",
   "runtime": "native-in-session",
   "objective": "Port measured Unbiased Strata CPU scheduling and weight-sharing optimizations into Colibri, retaining independent parallel future-token heads",
   "source": "robertkarl/UnbiasedStrata@d0a44ea7e757c59fa35a78b4b98d0c4bb44ce2cf",
@@ -19,5 +19,6 @@
   "residual_qualification": "CSNHv2 strict/scalar/OpenMP/ASan+UBSan and13interoptests; six captured reference replays; all live-target frontier/cancel/EOS/pin/precision gates passed",
   "fresh_runtime_result": "15pairs each,3freshdisjointprompts: CPUports pairedmedian1.0331; residualheads samebinary0.9706(slower); one runperprompt parallel offset2 accepted3/31 gate-selected attempts; exactnumericparity",
   "next_gate": "stronger parallel predictors with broad unseen accuracy; other-family/device real execution and model-native tier/KV gains",
-  "complete": false
+  "complete": false,
+  "constraint_change": "User explicitly permits sequential Strata drafting; next native-throughput slice uses authentic pretrained MTP"
 }

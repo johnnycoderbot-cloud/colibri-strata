@@ -48,7 +48,7 @@ Usage (mixed: int4 gs64 gate/up, int8 down -- the #1370 experiment):
   python tools/convert_qwen36.py --model <hf> --out ./qwen36_i4_gs64_d8 --ebits 4 --gs 64 --down-bits 8
 """
 
-import argparse, json, math, os, struct, sys, tempfile
+import argparse, hashlib, json, math, os, stat, struct, sys, tempfile
 from pathlib import Path
 
 # Windows: force UTF-8 output
@@ -235,6 +235,285 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from qwen36_tensor_kinds import classify, resolve_prefix, skip_reason, UnknownTensor  # noqa: E402
 
 
+MTP_SCHEMA = "colibri.qwen-mtp/v1"
+MTP_NATIVE_PRECISION = "qwen36:DBITS=8;IDOT=1;kernel=cpu;tap=post-final-norm-mtp/v1"
+MTP_MAX_BYTES = 512 * 1024 * 1024
+
+
+def _mtp_regular(path):
+    if path.is_symlink() or not stat.S_ISREG(path.stat().st_mode):
+        raise ValueError(f"MTP needs a regular non-symlink file: {path.name}")
+    return path
+
+
+def _mtp_json(path, limit=1024 * 1024):
+    _mtp_regular(path)
+    if path.stat().st_size > limit:
+        raise ValueError(f"MTP JSON exceeds its byte bound: {path.name}")
+    def pairs(items):
+        result = {}
+        for key, value in items:
+            if key in result:
+                raise ValueError("duplicate MTP JSON key")
+            result[key] = value
+        return result
+    def invalid(value):
+        raise ValueError(f"nonfinite MTP JSON constant: {value}")
+    value = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=pairs, parse_constant=invalid)
+    if not isinstance(value, dict):
+        raise ValueError("MTP JSON must be an object")
+    return value
+
+
+def _mtp_int(value, name, maximum):
+    if type(value) is not int or not 1 <= value <= maximum:
+        raise ValueError(f"unsupported MTP {name}")
+    return value
+
+
+def _mtp_geometry(config):
+    text = config.get("text_config", config)
+    if not isinstance(text, dict) or text.get("model_type") not in ("qwen3_5_text", "qwen3_6_text", "qwen3_8_text"):
+        raise ValueError("MTP export supports Qwen3.5/3.6/3.8 dense text geometry only")
+    if text.get("num_experts", 0) or text.get("num_local_experts", 0):
+        raise ValueError("MoE MTP geometry is unsupported")
+    if type(text.get("mtp_num_hidden_layers")) is not int or text["mtp_num_hidden_layers"] != 1:
+        raise ValueError("MTP export requires exactly one pretrained cell")
+    if text.get("mtp_use_dedicated_embeddings", False) is not False:
+        raise ValueError("dedicated MTP embeddings are unsupported")
+    if text.get("attention_bias", False) is not False or text.get("attn_output_gate", True) is not True:
+        raise ValueError("MTP export requires bias-free gated attention")
+    geometry = {key: _mtp_int(text.get(key), key, maximum) for key, maximum in (
+        ("hidden_size", 32768), ("vocab_size", 1048576), ("intermediate_size", 131072),
+        ("num_attention_heads", 256), ("num_key_value_heads", 256), ("head_dim", 1024),
+        ("num_hidden_layers", 256), ("max_position_embeddings", 1048576))}
+    if geometry["num_attention_heads"] % geometry["num_key_value_heads"]:
+        raise ValueError("MTP attention heads must divide evenly into KV heads")
+    rope = text.get("rope_parameters", {})
+    if not isinstance(rope, dict) or rope.get("rope_type", "default") != "default":
+        raise ValueError("MTP rope scaling is unsupported")
+    eps = text.get("rms_norm_eps", 1e-6)
+    theta = rope.get("rope_theta", text.get("rope_theta", 10000000.0))
+    partial = rope.get("partial_rotary_factor", text.get("partial_rotary_factor", 0.25))
+    for value, name, low, high in ((eps, "rms_norm_eps", 0, 1),
+                                 (theta, "rope_theta", 1, 1e12),
+                                 (partial, "partial_rotary_factor", 0, 1)):
+        if type(value) not in (int, float) or not math.isfinite(value) or not low < value <= high:
+            raise ValueError(f"unsupported MTP {name}")
+    rotary = geometry["head_dim"] * partial
+    if rotary != int(rotary) or int(rotary) % 2 or rotary < 2:
+        raise ValueError("unsupported MTP rotary dimension")
+    sections = rope.get("mrope_section", text.get("mrope_section", [16, 16, 16]))
+    if not isinstance(sections, list) or len(sections) != 3 or any(type(n) is not int or n < 0 or n > 1024 for n in sections):
+        raise ValueError("unsupported MTP mrope sections")
+    if sum(sections) != int(rotary) // 2 or type(rope.get("mrope_interleaved", True)) is not bool:
+        raise ValueError("MTP mrope sections do not cover the rotary dimension")
+    geometry.update(rms_norm_eps=eps, rope_theta=theta, partial_rotary_factor=partial,
+                    rotary_dim=int(rotary), mrope_section=sections, mtp_num_hidden_layers=1,
+                    layer_types=["full_attention"], attn_output_gate=True,
+                    rope_parameters={"rope_type": "default", "rope_theta": theta,
+                                     "partial_rotary_factor": partial, "mrope_section": sections,
+                                     "mrope_interleaved": rope.get("mrope_interleaved", True)})
+    return text, geometry
+
+
+def _mtp_shapes(g):
+    h, f, hd = g["hidden_size"], g["intermediate_size"], g["head_dim"]
+    q, kv = g["num_attention_heads"] * hd, g["num_key_value_heads"] * hd
+    shapes = {"mtp.fc.weight": [h, 2 * h]}
+    for name in ("norm", "pre_fc_norm_embedding", "pre_fc_norm_hidden"):
+        shapes[f"mtp.{name}.weight"] = [h]
+    stem = "mtp.layers.0."
+    for name in ("input_layernorm", "post_attention_layernorm"):
+        shapes[stem + name + ".weight"] = [h]
+    for name, shape in (("q_proj", [2 * q, h]), ("k_proj", [kv, h]), ("v_proj", [kv, h]),
+                        ("o_proj", [h, q]), ("q_norm", [hd]), ("k_norm", [hd])):
+        shapes[stem + "self_attn." + name + ".weight"] = shape
+    for name, shape in (("gate_proj", [f, h]), ("up_proj", [f, h]), ("down_proj", [h, f])):
+        shapes[stem + "mlp." + name + ".weight"] = shape
+    if sum(math.prod(shape) * 4 for shape in shapes.values()) > MTP_MAX_BYTES:
+        raise ValueError("MTP tensor geometry exceeds 512 MiB")
+    return shapes
+
+
+def _mtp_fingerprint(files, tag, precision=None):
+    """Streaming byte identities; CSNH tag/precision framing matches the C loader."""
+    digest = hashlib.sha256(tag)
+    if precision is not None:
+        encoded = precision.encode("utf-8", "strict")
+        digest.update(struct.pack("<Q", len(encoded))); digest.update(encoded)
+    paths = sorted(files, key=lambda path: path.name.encode("utf-8", "strict"))
+    if not paths or len(paths) > 256:
+        raise ValueError("MTP identity file count exceeds bounds")
+    digest.update(struct.pack("<Q", len(paths)))
+    records = []
+    for path in paths:
+        _mtp_regular(path); before = path.stat(); size = before.st_size
+        label = path.name.encode("utf-8", "strict")
+        if not label or len(label) > 4096 or size < 1 or size > 64 * 1024**3:
+            raise ValueError("MTP identity file exceeds bounds")
+        digest.update(struct.pack("<Q", len(label))); digest.update(label)
+        digest.update(struct.pack("<Q", size)); file_hash = hashlib.sha256(); read = 0
+        with path.open("rb") as stream:
+            while chunk := stream.read(1024 * 1024):
+                digest.update(chunk); file_hash.update(chunk); read += len(chunk)
+        after = path.stat()
+        if read != size or (after.st_size, after.st_mtime_ns) != (size, before.st_mtime_ns):
+            raise ValueError("MTP identity file changed while hashing")
+        records.append({"file": path.name, "bytes": size, "sha256": file_hash.hexdigest()})
+    return digest.hexdigest(), records
+
+
+def export_mtp_sidecar(source_dir, native_dir, output_dir, native_precision, source_revision=None):
+    """Export authentic dense MTP tensors only; source/native are read-only.
+
+    Uniform F32 is an exact expansion of F16/BF16 values. Raw zero-centered
+    norms are retained: the runtime applies (1 + weight), including q/k norms.
+    A fresh external directory is required, since adding a safetensors file to
+    the target itself would change its existing native model fingerprint.
+    """
+    if native_precision != MTP_NATIVE_PRECISION:
+        raise ValueError("MTP native precision/tap is not qualified")
+    import re
+    if source_revision is not None and not re.fullmatch(r"[0-9a-f]{40}", source_revision):
+        raise ValueError("MTP source revision must be an exact lowercase commit SHA")
+    source, native, output = map(Path, (source_dir, native_dir, output_dir))
+    for root in (source, native):
+        if root.is_symlink() or not root.is_dir():
+            raise ValueError("MTP source/native must be existing non-symlink directories")
+    if output.is_symlink():
+        raise ValueError("MTP output aliases an existing symlink")
+    source, native, output = source.resolve(), native.resolve(), output.resolve()
+    if output == source or source in output.parents or output == native or native in output.parents:
+        raise ValueError("MTP output must be outside source and native target directories")
+    if output.exists():
+        raise ValueError("MTP output directory must be new; overwrite refused")
+    config_path = source / "config.json"
+    config = _mtp_json(config_path); text, geometry = _mtp_geometry(config)
+    shapes = _mtp_shapes(geometry)
+    native_config = _mtp_json(native / "config.json")
+    original = _mtp_json(native / "config.hf.json")
+    meta = _mtp_json(native / "qwen36_meta.json")
+    _mtp_geometry(native_config)
+    if original != config or native_config != text:
+        raise ValueError("MTP source checkpoint config differs from native target")
+    expected_meta = {"hidden": geometry["hidden_size"], "n_layers": geometry["num_hidden_layers"],
+        "n_active": geometry["num_hidden_layers"], "num_experts": 0, "shared_inter": geometry["intermediate_size"],
+        "rms_eps": geometry["rms_norm_eps"], "q_heads": geometry["num_attention_heads"],
+        "kv_heads": geometry["num_key_value_heads"], "q_head_dim": 2 * geometry["head_dim"],
+        "k_head_dim": geometry["head_dim"], "v_head_dim": geometry["head_dim"],
+        "o_in": geometry["num_attention_heads"] * geometry["head_dim"], "head_dim": geometry["head_dim"],
+        "rope_theta": geometry["rope_theta"], "partial_rotary_factor": geometry["partial_rotary_factor"]}
+    if any(meta.get(key) != value or type(meta.get(key)) is bool for key, value in expected_meta.items()) or \
+            meta.get("zero_centered_norms", True) is not True:
+        raise ValueError("MTP native geometry/norm convention differs from source")
+
+    index_path = source / "model.safetensors.index.json"
+    wm = _mtp_json(index_path, 16 * 1024 * 1024).get("weight_map") if index_path.exists() else None
+    shards = {}
+    if wm is not None:
+        if not isinstance(wm, dict) or not wm or len(wm) > 65536:
+            raise ValueError("invalid MTP source weight map")
+        for key, name in wm.items():
+            if not isinstance(key, str) or len(key) > 512 or not isinstance(name, str) or not name or \
+                    Path(name).name != name or any(c in name for c in ("/", "\\", "\0")) or not name.endswith(".safetensors"):
+                raise ValueError("unsafe MTP source shard/tensor name")
+            shards[name] = source / name
+    else:
+        wm = {}
+        for path in sorted(source.glob("*.safetensors")):
+            if path.name != "joint_head.safetensors": shards[path.name] = path
+    if not shards or len(shards) > 128:
+        raise ValueError("MTP source shard count exceeds bounds")
+    descriptions = {}
+    for name, path in shards.items():
+        _mtp_regular(path)
+        with safe_open_pt(str(path), framework="pt") as reader:
+            for key in reader.keys():
+                if key in descriptions:
+                    raise ValueError("duplicate source tensor across MTP shards")
+                if index_path.exists() and wm.get(key) != name:
+                    raise ValueError("MTP source index/shard mismatch")
+                wm[key] = name
+                tensor = reader.get_slice(key)
+                descriptions[key] = (list(tensor.get_shape()), tensor.get_dtype())
+    if set(wm) != set(descriptions):
+        raise ValueError("MTP source index has missing tensors")
+    prefix = resolve_prefix(wm)
+    for key in wm:
+        try: classify(key, prefix)
+        except UnknownTensor as error: raise ValueError(f"unknown source tensor for MTP export: {key}") from error
+    actual = {name for name in descriptions if name.startswith("mtp.")}
+    if actual != set(shapes):
+        raise ValueError(f"unknown/incomplete MTP tensor set; missing={sorted(set(shapes)-actual)}, extra={sorted(actual-set(shapes))}")
+    for name, shape in shapes.items():
+        if descriptions[name][0] != shape or descriptions[name][1] not in ("BF16", "F16", "F32"):
+            raise ValueError(f"MTP tensor shape/dtype mismatch: {name}")
+    for name, shape in ((prefix + "embed_tokens.weight", [geometry["vocab_size"], geometry["hidden_size"]]),
+                         (prefix + "norm.weight", [geometry["hidden_size"]])):
+        if descriptions.get(name, (None,))[0] != shape:
+            raise ValueError(f"MTP shared target tensor shape mismatch: {name}")
+    globals_path = _mtp_regular(native / "model-globals.safetensors")
+    with safe_open_pt(str(globals_path), framework="pt") as reader:
+        for name, shape in (("model.embed_tokens.weight", [geometry["vocab_size"], geometry["hidden_size"]]),
+                            ("lm_head.weight", [geometry["vocab_size"], geometry["hidden_size"]]),
+                            ("model.norm.weight", [geometry["hidden_size"]])):
+            if name not in reader.keys() or list(reader.get_slice(name).get_shape()) != shape:
+                raise ValueError(f"MTP native shared tensor shape mismatch: {name}")
+
+    source_files = [config_path, _mtp_regular(source / "tokenizer.json"), *shards.values()]
+    if index_path.exists(): source_files.append(index_path)
+    source_fingerprint, source_records = _mtp_fingerprint(source_files, b"colibri.qwen-mtp-source/v1\0")
+    native_files = [path for path in native.iterdir() if path.name in ("config.json", "qwen36_meta.json", "tokenizer.json") or
+                    (len(path.name) > 12 and path.name.endswith(".safetensors"))]
+    native_fingerprint, native_records = _mtp_fingerprint(native_files, b"CSNH-model-v1\0", native_precision)
+    sr = {item["file"]: item for item in source_records}; nr = {item["file"]: item for item in native_records}
+    hf_hash, hf_records = _mtp_fingerprint([native / "config.hf.json"], b"mtp-original-config/v1\0")
+    del hf_hash
+    if sr["config.json"]["sha256"] != hf_records[0]["sha256"] or sr["tokenizer.json"]["sha256"] != nr["tokenizer.json"]["sha256"]:
+        raise ValueError("MTP source config/tokenizer bytes differ from native target")
+    tensors = {}
+    for shard, path in shards.items():
+        names = [name for name in shapes if wm[name] == shard]
+        if not names: continue
+        with safe_open_pt(str(path), framework="pt") as reader:
+            for name in names:
+                tensor = reader.get_tensor(name).float().contiguous().clone()
+                if not bool(torch.isfinite(tensor).all()):
+                    raise ValueError(f"nonfinite MTP tensor: {name}")
+                tensors[name] = tensor
+    from safetensors.torch import save as serialize_tensors
+    payload = serialize_tensors(tensors, metadata={"schema": MTP_SCHEMA, "norm_convention": "qwen_rmsnorm_plus_one"})
+    if len(payload) > MTP_MAX_BYTES + 1024 * 1024:
+        raise ValueError("MTP sidecar exceeds byte limit")
+    metadata = {"schema": MTP_SCHEMA, "tensor_dtype": "F32", "norm_convention": "qwen_rmsnorm_plus_one",
+        "fc_order": ["embedding", "target_hidden"], "target_hidden_tap": "post_final_norm",
+        "shared_embedding": True, "shared_lm_head": True, "geometry": geometry,
+        "source": {"checkpoint_fingerprint": source_fingerprint, "config_sha256": sr["config.json"]["sha256"],
+                   "tokenizer_sha256": sr["tokenizer.json"]["sha256"], "revision": source_revision, "files": source_records},
+        "native": {"fingerprint": native_fingerprint, "runtime_precision": native_precision,
+                   "original_config_sha256": hf_records[0]["sha256"], "files": native_records},
+        "sidecar": {"file": "model-mtp.safetensors", "sha256": hashlib.sha256(payload).hexdigest(), "bytes": len(payload)},
+        "tensors": {name: {"shape": shapes[name], "dtype": "F32", "source_dtype": descriptions[name][1]} for name in sorted(shapes)}}
+    document = json.dumps(metadata, sort_keys=True, indent=2, allow_nan=False).encode("utf-8") + b"\n"
+    if len(document) > 65536:
+        raise ValueError("MTP metadata exceeds 64 KiB")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.mkdir()  # exclusive directory creation, after every validation
+    created = []
+    try:
+        for name, content in (("model-mtp.safetensors", payload), ("qwen36_mtp.json", document)):
+            path = output / name
+            with path.open("xb") as stream:
+                created.append(path); stream.write(content); stream.flush(); os.fsync(stream.fileno())
+    except BaseException:
+        for path in reversed(created): path.unlink()
+        try: output.rmdir()
+        except OSError: pass
+        raise
+    return metadata
+
+
 def main():
     ap = argparse.ArgumentParser(description="Convert Qwen3.6 MoE HF checkpoint -> colibri container")
     src = ap.add_mutually_exclusive_group(required=False)
@@ -259,12 +538,28 @@ def main():
                     help="Upload each generated shard to --upload-repo immediately, then delete it "
                          "locally. Keeps local disk at ~one shard.")
     ap.add_argument("--no-readme", action="store_true", help="Skip README.md generation")
+    ap.add_argument("--mtp-only", action="store_true", help="Export pretrained dense MTP to a NEW external sidecar directory; native target stays unchanged")
+    ap.add_argument("--native-target", help="Existing native container to bind with --mtp-only")
+    ap.add_argument("--native-precision", help="Exact qualified target precision/tap descriptor for --mtp-only")
+    ap.add_argument("--source-revision", help="Optional exact source checkpoint commit SHA for --mtp-only")
     ap.add_argument("--selftest", action="store_true",
                     help="Validate the int4 pack/unpack round-trip on synthetic weights, then exit "
                          "(no model conversion). Checks that packing recovers the exact quantized "
                          "integers and that int4 halves the storage vs int8.")
     args = ap.parse_args()
 
+    if args.mtp_only:
+        if not args.model or args.repo or not args.out or not args.native_target or not args.native_precision or \
+                args.selftest or args.upload_repo or args.stream_upload or args.low_disk:
+            ap.error("--mtp-only requires local --model, --native-target, --native-precision and NEW --out; upload/conversion modes are incompatible")
+        try:
+            metadata = export_mtp_sidecar(args.model, args.native_target, args.out, args.native_precision, args.source_revision)
+        except (ValueError, OSError, KeyError) as error:
+            sys.exit(f"MTP export refused: {error}")
+        print(f"MTP sidecar -> {args.out}; {len(metadata['tensors'])} authentic tensors, native fingerprint {metadata['native']['fingerprint']}")
+        return
+    if args.native_target or args.native_precision or args.source_revision:
+        ap.error("--native-target/--native-precision/--source-revision require --mtp-only")
     if args.selftest:
         return _selftest()
     if not (args.repo or args.model):

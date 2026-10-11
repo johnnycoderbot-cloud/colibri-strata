@@ -1,0 +1,38 @@
+{
+  "method": "authentic pretrained one-cell MTP, source BF16-exact F32 weights, F32 reference compute",
+  "geometry": {
+    "hidden": 1024,
+    "query_heads": 8,
+    "kv_heads": 2,
+    "head_dim": 256,
+    "query_width": 2048,
+    "intermediate": 3584,
+    "rotary_dim": 64
+  },
+  "cell_position": "targetp (no +1 RoPE shift)",
+  "target_hidden": "post-final-norm",
+  "norm": "Gemma1+rawweight",
+  "concat_order": [
+    "embedding",
+    "target_hidden"
+  ],
+  "rows": 279,
+  "sessions": 3,
+  "cache_scope": "generation captured segment only; prompt-prefix K/V absent",
+  "next_cell_chain_input": "previous normalized MTP output, not pre-final residual",
+  "results": {
+    "f16": {
+      "top1": 0.6881720423698425,
+      "matches": 192,
+      "full_vocabulary_mean_cross_entropy": 1.1598279795740751
+    },
+    "native-idot": {
+      "top1": 0.6953405141830444,
+      "matches": 194,
+      "full_vocabulary_mean_cross_entropy": 1.158932623131935
+    }
+  },
+  "causal_prefix_and_kv_only_checks_pass": true,
+  "trained": false,
+  "elapsed_seconds": 5.791271800000686
+}

@@ -16,6 +16,7 @@ import hashlib
 import json
 import math
 import os
+import re
 from pathlib import Path
 import statistics
 import sys
@@ -28,7 +29,26 @@ except ImportError:
 
 MAX_PROMPTS_BYTES = 256 * 1024
 MAX_PROMPT_BYTES = 65536
-STUDY_IDS = ("stock", "rows", "group", "wide", "heads")
+STUDY_IDS = ("stock", "rows", "group", "wide", "heads", "mtp", "stock-mtp")
+MTP_STATS = re.compile(r"\[qwen36 MTP\] turn (\S+): (.*)")
+
+
+def mtp_statistics(lines):
+    result = {}
+    names = {"bank_calls", "bank_seconds", "failures", "forwards", "tokens", "accepted", "drafts", "verifies", "ended_mid_verify"}
+    for line in lines:
+        match = MTP_STATS.fullmatch(line.strip())
+        if not match: continue
+        pairs = re.findall(r"([a-z_]+)=([0-9.]+)", match[2])
+        if (len(pairs) != len(names) or {key for key, _ in pairs} != names or match[1] in result or
+                " ".join(key + "=" + value for key, value in pairs) != match[2]):
+            raise ValueError("invalid or duplicate native MTP statistics")
+        cells = {key: bounded_number(float(value), 0, 1e9, key) if key == "bank_seconds" else
+                 bounded_int(int(value), 0, 2**63-1, key) for key, value in pairs}
+        if cells["accepted"] > cells["drafts"] or cells["ended_mid_verify"] not in (0, 1):
+            raise ValueError("inconsistent native MTP statistics")
+        result[match[1]] = cells
+    return result
 
 
 def parse_profile(line):
@@ -105,24 +125,27 @@ def common_env(args):
             "COLI_IDOT_WIDE": "0",
             "Q36_MAXT": "2048", "COLI_KV_PREFIX": "1", "QWEN_DENSE_BATCH": "1", "QWEN36_QPACK": "",
             "COLI_STRATA_HEADS": "", "COLI_STRATA_TRACE": "", "COLI_STRATA_INPUT": "",
+            "Q36_MTP": "", "Q36_MTP_DRAFTS": str(args.mtp_drafts), "Q36_MTP_FORCE": "", "Q36_MTP_TEST_ORACLE": "",
             # Keep the prior fork's head batching and expert chunks in every
             # same-binary ablation; only its selected new knob varies.
             "QWEN_HEAD_BATCH": "1", "QWEN_EXPERT_BATCH": "1",
             "COLI_TIMERS": "1" if args.phase_timers else "0"}
 
 
-def arm(args, name, engine, rows, projection_group, heads=False, source_kind=None, wide=None):
+def arm(args, name, engine, rows, projection_group, heads=False, source_kind=None, wide=None, mtp=False):
     env = common_env(args)
     wide = args.wide if wide is None else wide
     env.update(COLI_IDOT_ROWS=str(rows), QWEN_PROJECTION_GROUP=str(projection_group), COLI_IDOT_WIDE=str(wide))
     if heads:
         env["COLI_STRATA_HEADS"] = linux_path(args.heads) if args.wsl else str(args.heads)
         env["COLI_STRATA_INPUT"] = args.head_input
+    if mtp:
+        env["Q36_MTP"] = linux_path(args.mtp_dir) if args.wsl else str(args.mtp_dir)
     return {"name": name, "engine": str(engine), "source_kind": source_kind or args.optimized_source_kind,
             "source_kind_verification": "caller-supplied binary provenance; file hashes recorded",
             "rows": rows, "projection_group": projection_group, "wide": wide,
             "wide_setting_scope": "requested kernel setting; unsupported ISA uses the ordinary native kernel",
-            "parallel_heads": heads, "env": env}
+            "parallel_heads": heads, "pretrained_mtp": mtp, "env": env}
 
 
 def study_plan(args):
@@ -145,12 +168,22 @@ def study_plan(args):
         studies["heads"] = {"id": "heads", "name": "parallel-head-contribution", "purpose": "same optimized binary and CPU knobs; only independent head bank changes",
                             "control": optimized,
                             "candidate": arm(args, "optimized-with-heads", args.optimized, args.rows, args.projection_group, True)}
+    if args.mtp_dir:
+        studies["mtp"] = {"id": "mtp", "name": "pretrained-mtp-contribution",
+                          "purpose": "same optimized binary and CPU knobs; only authentic pretrained sequential MTP changes",
+                          "control": optimized,
+                          "candidate": arm(args, "optimized-with-mtp", args.optimized, args.rows, args.projection_group, mtp=True)}
+        studies["stock-mtp"] = {"id": "stock-mtp", "name": "stock-vs-pretrained-mtp",
+                                "purpose": "unchanged stock Colibri against the complete CPU fork with authentic pretrained sequential MTP",
+                                "control": arm(args, "stock", args.baseline, 0, 0, source_kind=args.baseline_source_kind, wide=0),
+                                "candidate": arm(args, "optimized-with-mtp", args.optimized, args.rows, args.projection_group, mtp=True)}
     selected = args.studies
     if selected is None:
         selected = ["stock"]
         if args.ablate_knobs: selected.extend(("rows", "group"))
         if args.ablate_wide: selected.append("wide")
         if args.heads: selected.append("heads")
+        if args.mtp_dir: selected.append("mtp")
     return [studies[key] for key in selected]
 
 
@@ -175,6 +208,13 @@ def model_identity(root):
     return {"path": str(root), "files": files, "total_bytes": sum(f["bytes"] for f in files),
             "manifest_sha256": hashlib.sha256(json.dumps(files, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
             "weights_hashed": True, "hashing_precedes_measurement_and_warms_page_cache": True}
+
+
+def mtp_identity(root):
+    files = [{"name": name, "bytes": (root / name).stat().st_size, "sha256": file_sha(root / name)}
+             for name in ("model-mtp.safetensors", "qwen36_mtp.json")]
+    return {"path": str(root), "files": files,
+            "manifest_sha256": hashlib.sha256(json.dumps(files, sort_keys=True, separators=(",", ":")).encode()).hexdigest()}
 
 
 def normalize_frames(result):
@@ -268,6 +308,7 @@ def run_study(args, prompts, definition, factory, report, checkpoint=lambda: Non
         raise
     finally:
         cleanup_error = None
+        qualification_error = False
         for side, engine in engines.items():
             try:
                 engine.close()
@@ -278,8 +319,32 @@ def run_study(args, prompts, definition, factory, report, checkpoint=lambda: Non
             result[side + "_stderr"] = list(engine.stderr)
             result[side + "_stderr_truncated_bytes"] = getattr(engine, "stderr_truncated_bytes", 0)
             result[side + "_ready"] = getattr(engine, "ready_line", None)
+        if result["status"] == "complete" and result["candidate"]["pretrained_mtp"]:
+            try:
+                observed = mtp_statistics(result["candidate_stderr"])
+                required = []
+                for rows in (result["fresh_process_requests"], result["correctness"], result["warmups"], result["records"]):
+                    for row in rows:
+                        value = row["candidate"]
+                        evidence = observed.get(value["request_id"])
+                        if evidence is None or evidence["failures"]:
+                            raise RuntimeError("missing or failed authentic MTP execution evidence")
+                        value["native_mtp_statistics"] = evidence
+                        required.append(evidence)
+                if not any(cell["bank_calls"] > 0 for cell in required):
+                    raise RuntimeError("MTP study did not execute the pretrained cell")
+                result["pretrained_mtp_executed"] = True
+                result["native_mtp_statistics_scope"] = {
+                    "bank_calls_bank_seconds_failures": "pretrained MTP cell only",
+                    "forwards_tokens_accepted_drafts_verifies": "shared target verifier counters; may include prompt lookup",
+                    "source_acceptance": "MTP-only per-offset counts are emitted separately in native MTP gate diagnostics"}
+            except BaseException as error:
+                result["status"] = "failed"
+                result["error"] = {"type": type(error).__name__, "message": str(error)}
+                cleanup_error = cleanup_error or error
+                qualification_error = True
         checkpoint()
-        if cleanup_error is not None and result.get("error") is None:
+        if cleanup_error is not None and (result.get("error") is None or qualification_error):
             raise cleanup_error
 
 
@@ -297,12 +362,15 @@ def validate_args(args):
     if args.tokens != 64: raise ValueError("qualification requires a fixed output cap of 64 tokens")
     bounded_number(args.request_timeout, 0, 600, "request timeout", True)
     bounded_number(args.startup_timeout, 0, 600, "startup timeout", True)
+    bounded_int(args.mtp_drafts, 1, 3, "MTP drafts")
     if args.studies is not None:
         selected = args.studies.split(",")
         if not selected or len(selected) > len(STUDY_IDS) or len(set(selected)) != len(selected) or any(key not in STUDY_IDS for key in selected):
-            raise ValueError("studies must be distinct comma-separated IDs: stock,rows,group,wide,heads")
+            raise ValueError("studies must be distinct comma-separated IDs: stock,rows,group,wide,heads,mtp")
         if "heads" in selected and not args.heads:
             raise ValueError("the heads study requires --heads")
+        if any(key in selected for key in ("mtp", "stock-mtp")) and not args.mtp_dir:
+            raise ValueError("the mtp study requires --mtp-dir")
         args.studies = selected
     for label in ("baseline_source_kind", "optimized_source_kind"):
         value = getattr(args, label)
@@ -317,9 +385,14 @@ def validate_args(args):
     if args.heads:
         args.heads = args.heads.resolve()
         if not args.heads.is_file(): raise ValueError("head bank is absent")
+    if args.mtp_dir:
+        args.mtp_dir = args.mtp_dir.resolve()
+        if not args.mtp_dir.is_dir() or not all((args.mtp_dir / name).is_file() for name in ("model-mtp.safetensors", "qwen36_mtp.json")):
+            raise ValueError("MTP sidecar directory requires weights and metadata")
     if os.path.lexists(args.output): raise FileExistsError("report must be a new path")
     args.output = args.output.resolve()
-    if args.output.is_relative_to(args.model): raise ValueError("report must be outside model assets")
+    if args.output.is_relative_to(args.model) or (args.mtp_dir and args.output.is_relative_to(args.mtp_dir)):
+        raise ValueError("report must be outside model assets")
     if args.prompts.stat().st_size > MAX_PROMPTS_BYTES: raise ValueError("prompt file exceeds 256 KiB")
     prompts = json.loads(args.prompts.read_text(encoding="utf-8"))
     if (not isinstance(prompts, list) or len(prompts) != 3 or
@@ -339,13 +412,15 @@ def main(argv=None, *, engine_factory=None):
     parser.add_argument("--prompts", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--heads", type=Path)
+    parser.add_argument("--mtp-dir", type=Path)
+    parser.add_argument("--mtp-drafts", type=int, choices=(1, 2, 3), default=1)
     parser.add_argument("--head-input", choices=("hidden", "next-embedding"), default="next-embedding")
     parser.add_argument("--rows", type=int, choices=(0, 1), default=1)
     parser.add_argument("--wide", type=int, choices=(0, 1), default=0)
     parser.add_argument("--projection-group", "--shared-act", dest="projection_group", type=int, choices=(0, 1), default=1)
     parser.add_argument("--ablate-knobs", action="store_true")
     parser.add_argument("--ablate-wide", action="store_true")
-    parser.add_argument("--studies", help="select only these comma-separated studies in this order: stock,rows,group,wide,heads; selection overrides ablation flags")
+    parser.add_argument("--studies", help="select comma-separated studies: stock,rows,group,wide,heads,mtp,stock-mtp; overrides ablation flags")
     parser.add_argument("--phase-timers", action="store_true", help="enable identical native phase timers in both arms; adds instrumentation")
     parser.add_argument("--threads", type=int, default=8)
     parser.add_argument("--tokens", type=int, default=64)
@@ -361,7 +436,7 @@ def main(argv=None, *, engine_factory=None):
               "settings": {"threads": args.threads, "repeats": args.repeats, "fixed_output_cap": 64,
                            "lookup": True, "temperature": 0, "top_p": 1, "wsl": args.wsl,
                            "phase_timers": args.phase_timers, "rows": args.rows, "projection_group": args.projection_group,
-                           "wide": args.wide, "studies": [definition["id"] for definition in definitions]},
+                           "wide": args.wide, "mtp_drafts": args.mtp_drafts, "studies": [definition["id"] for definition in definitions]},
               "held_out_status": "caller-supplied three distinct prompts; training disjointness is not inferred",
               "requested_compute": "CPU dense INT8/integer-dot", "hardware_execution_qualified": False,
               "cold_page_cache_verified": False, "prefill_metric_available": False,
@@ -384,6 +459,7 @@ def main(argv=None, *, engine_factory=None):
                                   "optimized": {"path": str(args.optimized), "sha256": file_sha(args.optimized)}}
             report["prompt_sha256"] = file_sha(args.prompts)
             report["head_identity"] = {"path": str(args.heads), "sha256": file_sha(args.heads), "input": args.head_input} if args.heads else None
+            report["mtp_identity"] = mtp_identity(args.mtp_dir) if args.mtp_dir else None
             checkpoint()
             for definition in definitions:
                 run_study(args, prompts, definition, engine_factory or MetricEngine, report, checkpoint)
@@ -392,6 +468,8 @@ def main(argv=None, *, engine_factory=None):
                     raise RuntimeError("engine binary changed during measurement")
             if args.heads and file_sha(args.heads) != report["head_identity"]["sha256"]:
                 raise RuntimeError("head bank changed during measurement")
+            if args.mtp_dir and mtp_identity(args.mtp_dir)["manifest_sha256"] != report["mtp_identity"]["manifest_sha256"]:
+                raise RuntimeError("MTP sidecar changed during measurement")
             report["model_identity_after"] = model_identity(args.model)
             if report["model_identity_after"]["manifest_sha256"] != report["model_identity"]["manifest_sha256"]:
                 raise RuntimeError("model assets changed during measurement")

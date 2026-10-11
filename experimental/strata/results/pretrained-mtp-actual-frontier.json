@@ -1,0 +1,95 @@
+{
+  "schema": "colibri.native-pretrained-mtp-frontier-correctness/v1",
+  "verdict": "approved",
+  "performance_evidence": false,
+  "authentic_pretrained_cell_requested": true,
+  "authentic_pretrained_cell_execution_observed": true,
+  "forced_proposals_correctness_only": false,
+  "selected_cases": [
+    "actual-depth1",
+    "actual-depth2",
+    "actual-depth3"
+  ],
+  "forced_oracle_scope": "initial prompt length only; continuation uses actual cell proposals",
+  "engine_sha256": "2d6e1e14cbe1f5890c34a49ee01f42742d86d69ed868692097e05218dfa60a8a",
+  "native_fingerprint": "09270fb49fb801cc99dc6ce97b06aac331d0dcc7750223dd1d04e8e76c69fd78",
+  "mtp_identity": {
+    "model-mtp.safetensors": "bb2c1888cc073dfbad0b86a6e3701384561598dc6766132f0b0b8e19afbfce87",
+    "qwen36_mtp.json": "858cc5e47574ca4cb40f0cb2bce76fe183b6cc0182b9c502305a0326aac9899b"
+  },
+  "runtime_precision": "qwen36:DBITS=8;IDOT=1;kernel=cpu;tap=final-rmsnorm+next-embedding/v1",
+  "oracle_ids": [
+    20682,
+    2624,
+    369,
+    264,
+    15346,
+    7139,
+    11767,
+    1429,
+    303,
+    1423,
+    1472,
+    264
+  ],
+  "records": [
+    {
+      "name": "actual-depth1",
+      "tokens": 10,
+      "frontier_rows": 14,
+      "stats": {
+        "bank_calls": 4,
+        "bank_seconds": 0.033647,
+        "failures": 0,
+        "forwards": 5,
+        "tokens": 9,
+        "accepted": 4,
+        "drafts": 4,
+        "verifies": 4,
+        "ended_mid_verify": 0
+      },
+      "pretrained_mtp": true,
+      "mtp_depth": 1,
+      "forced_proposals_correctness_only": false
+    },
+    {
+      "name": "actual-depth2",
+      "tokens": 10,
+      "frontier_rows": 14,
+      "stats": {
+        "bank_calls": 4,
+        "bank_seconds": 0.064743,
+        "failures": 0,
+        "forwards": 5,
+        "tokens": 9,
+        "accepted": 4,
+        "drafts": 8,
+        "verifies": 4,
+        "ended_mid_verify": 0
+      },
+      "pretrained_mtp": true,
+      "mtp_depth": 2,
+      "forced_proposals_correctness_only": false
+    },
+    {
+      "name": "actual-depth3",
+      "tokens": 10,
+      "frontier_rows": 14,
+      "stats": {
+        "bank_calls": 4,
+        "bank_seconds": 0.099293,
+        "failures": 0,
+        "forwards": 5,
+        "tokens": 9,
+        "accepted": 4,
+        "drafts": 11,
+        "verifies": 4,
+        "ended_mid_verify": 0
+      },
+      "pretrained_mtp": true,
+      "mtp_depth": 3,
+      "forced_proposals_correctness_only": false
+    }
+  ],
+  "elapsed_seconds": 214.04699999999139
+}

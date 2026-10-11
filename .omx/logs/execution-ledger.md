@@ -158,3 +158,21 @@
   gate-selected offset2accepted3/31,offset3neverjudged. This is a smallselected
   sample, not fulltraceaccuracy. Public evidence retains allpairs/counters;
   heads remain opt-in. Overall all-family/device throughput goal incomplete.
+- User explicitly relaxed independent-parallel drafting: sequential Strata-style
+  MTP now allowed. Used all15 actual pretrained Qwen3.5-0.8B MTP tensors with
+  externalimmutable sidecar; defaulttarget conversion unchanged. Nativecell
+  uses embeddingfirst,1+rawnorms,gatedGQA/SwiGLU,normalizedchainfeedback,
+  sharedtargetreadout andKV-onlyknownpair prefill/catchup. Targetacceptedhidden
+  replacesprovisionalMTPKV evenwhenallguessedtokensmatch. Firstdraftfeecharged,
+  gatecalibratesplainT1; all sampled proposals bypassed safely.
+- Converter16; combinednative10C+74Python; strict/scalar/ASan/UBSan kernel and
+  frontier8/32modes passed. Realweightoraclemaxerror F32 1.55e-5/native8 4.77e-6.
+  Actualrealmodeldepth1/2/3 targetIDs/LP/hidden identical; realcellforcedfirst,
+  middle,cycle,fullaccept,budget,pin,prefix,EOS,cancel/postcancel,sampling and
+  precision refusals passed. Dependency8 andVKlink2 passed; reviewapproved.
+- MeasuredMTPalone:15 alternating pairs,3testrequests,64token cap,8CPUthreads,
+  sameoptimizedbinaryoff/on; pairedmedian1.1313, all15wins,41.241→46.657 arm
+  medians. CompleteforkvsunchangedColibri: pairedmedian1.1508, all15wins,
+  40.827→45.997 arm medians. Bothnumericparity andasset/binaryhash stability
+  gatespassed; no forced guesses/traces during timing. Overall all-family/device
+  qualification remainspending; current denseCPU-MTPslice achieveditsgain.
