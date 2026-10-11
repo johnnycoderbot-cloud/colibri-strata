@@ -3,6 +3,14 @@
 Portable-core tests are the starting gate. Each task below remains pending until
 its stated evidence exists; model-specific trained heads are separate artifacts.
 
+Tracked on GitHub:
+
+- [All-family head adapters #1](https://github.com/johnnycoderbot-cloud/colibri-strata/issues/1)
+- [Real trace capture and trained packs #2](https://github.com/johnnycoderbot-cloud/colibri-strata/issues/2)
+- [GPU prefetch and chunked prefill #3](https://github.com/johnnycoderbot-cloud/colibri-strata/issues/3)
+- [Adaptive GPU hot-expert residency #4](https://github.com/johnnycoderbot-cloud/colibri-strata/issues/4)
+- [Model-native INT8 KV and quality gates #5](https://github.com/johnnycoderbot-cloud/colibri-strata/issues/5)
+
 ## 1. Real head adapters across the text engines
 
 Start with the existing verifiers in GLM, qwen36/qwen38 and DeepSeek; next add

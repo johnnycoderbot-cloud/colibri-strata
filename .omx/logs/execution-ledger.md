@@ -21,3 +21,10 @@
   and verifier depth capacity. Production and hardware follow-ups remain pending.
 - Created https://github.com/johnnycoderbot-cloud/colibri-strata; GitHub confirms
   `isFork=true`, parent JustVugg/colibri. Set local origin to fork, upstream to base.
+- Published code commit e910c19acb1f6be251e26bd9790b36858e78e4d4 on main.
+- GitHub focused CI https://github.com/johnnycoderbot-cloud/colibri-strata/actions/runs/38101880229
+  completed successfully: portable OpenMP/scalar/regression/sanitizers and actual
+  CPU torch training plus compiled C export. Bootstrap verdict: approved.
+- Created issues 1..5 for all-family adapters, real head capture/training, GPU
+  prefetch/chunked prefill, hot residency and model-native INT8 KV quality.
+  These production tasks remain pending; no new live inference speedup claimed.
