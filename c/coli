@@ -583,6 +583,8 @@ def sequential_mtp_env(a, arch, env):
         if isinstance(depth, bool) or not isinstance(depth, int) or depth not in (1, 2, 3):
             raise ValueError("MTP draft depth must be 1, 2 or 3")
         env["Q36_MTP_DRAFTS"] = str(depth)
+    else:
+        env.setdefault("Q36_MTP_DRAFTS", "3")
     return env
 
 def env_for_engine(a, arch, plan=None):
@@ -3605,7 +3607,7 @@ def main():
     common.add_argument("--mtp-dir", default=None, metavar="DIR",
                         help="pretrained sequential qwen36 CPU MTP sidecar (defaults to greedy)")
     common.add_argument("--mtp-drafts", type=int, choices=(1, 2, 3), default=None,
-                        help="maximum sequential draft tokens before target verification")
+                        help="maximum sequential draft tokens before target verification (default: 3)")
     common.add_argument("--cluster-workers", default=os.environ.get("CLUSTER_WORKERS"),
                         help="comma-separated expert workers, host:port,...")
     common.add_argument("--cluster-coordinator", default=os.environ.get("CLUSTER_COORDINATOR"),

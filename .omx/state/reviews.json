@@ -98,5 +98,22 @@
       "Windows/macOS remote rerun pending",
       "broader family/device/precision qualification pending"
     ]
+  },
+  {
+    "id": "strata-window-default",
+    "reviewer": "/root (direct review)",
+    "status": "approved",
+    "scope": "user-directed maximum3 native/launcher/collector defaults; explicit overrides and historical evidence preserved",
+    "verification": [
+      "5 launcher tests",
+      "28 benchmark-driver tests",
+      "native MTP frontier passed",
+      "rebuilt real-model default maximum3 observed; exact eight-token continuation matches maximum1"
+    ],
+    "qualification_limits": [
+      "existing adaptive cost gate retained",
+      "this matches window capacity; probability cutoff and narrowed draft vocabulary are separate remaining ports",
+      "broader runtime/family/device goal is incomplete"
+    ]
   }
 ]

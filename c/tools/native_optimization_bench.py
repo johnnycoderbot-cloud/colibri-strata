@@ -470,7 +470,7 @@ def main(argv=None, *, engine_factory=None):
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--heads", type=Path)
     parser.add_argument("--mtp-dir", type=Path)
-    parser.add_argument("--mtp-drafts", type=int, choices=(1, 2, 3), default=1)
+    parser.add_argument("--mtp-drafts", type=int, choices=(1, 2, 3), default=3)
     parser.add_argument("--head-input", choices=("hidden", "next-embedding"), default="next-embedding")
     parser.add_argument("--rows", type=int, choices=(0, 1), default=1)
     parser.add_argument("--wide", type=int, choices=(0, 1), default=0)

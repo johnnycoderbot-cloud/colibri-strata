@@ -9,8 +9,9 @@ The complete Qwen3.5-0.8B CPU fork measured **+15.1% paired decoding speed over
 unchanged Colibri**. MTP alone adds **+13.1%** over the CPU-optimized decoder.
 Both 15-pair comparisons preserve identical greedy output and win every pair.
 [Sequential MTP setup and measurements](docs/sequential-mtp.md).
-Maximum-one drafting remains the default: maxima two and three measured +1.3%
-and +0.1% overall against it, with regressions on some requests.
+The default now permits three sequential draft tokens, matching Strata's
+four-row verification window. The adaptive cost gate can select shorter drafts.
+Earlier maximum-two/three trials measured +1.3%/+0.1% against maximum one.
 Existing OLMoE CPU prefetch measured -1.4%/+0.6% at two fixed cache budgets and
 stays opt-in. [MoE measurements](docs/moe-prefetch-benchmark.md).
 Other-family/device qualification remains pending. The Strata-inspired CPU

@@ -39,4 +39,13 @@ class MtpLauncherTests(unittest.TestCase):
         env={"OTHER":"existing"}
         self.assertIs(self.cli.sequential_mtp_env(types.SimpleNamespace(),"glm",env),env)
 
+    def test_strata_window_default_and_explicit_depth_precedence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            for name in ("qwen36_mtp.json","model-mtp.safetensors"):(Path(directory)/name).write_bytes(b"fixture")
+            a=types.SimpleNamespace(mtp_dir=directory,gpu="none")
+            self.assertEqual(self.cli.sequential_mtp_env(a,"qwen36",{})["Q36_MTP_DRAFTS"],"3")
+            self.assertEqual(self.cli.sequential_mtp_env(a,"qwen36",{"Q36_MTP_DRAFTS":"2"})["Q36_MTP_DRAFTS"],"2")
+            a.mtp_drafts=1
+            self.assertEqual(self.cli.sequential_mtp_env(a,"qwen36",{"Q36_MTP_DRAFTS":"2"})["Q36_MTP_DRAFTS"],"1")
+
 if __name__=="__main__":unittest.main()

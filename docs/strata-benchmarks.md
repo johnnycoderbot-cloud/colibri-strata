@@ -1,7 +1,9 @@
 # Benchmark protocol
 
-The draft-depth trials retain maximum one: maximum two measured +1.3% overall
-against it, maximum three +0.1%, with workload regressions in both studies.
+The draft-depth trials measured maximum two at +1.3% overall
+against maximum one, maximum three +0.1%, with workload regressions in both studies.
+The current runtime default is the requested Strata-style maximum of three;
+the comparisons below retain their original explicit draft settings.
 [Depth evidence and choice](sequential-mtp.md#measured-draft-depth-choice).
 Existing native OLMoE CPU prefetch measured -1.4% with eight cached experts per
 layer and +0.6% with sixteen; these warm-filesystem whole-request results keep

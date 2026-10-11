@@ -192,3 +192,12 @@
   passed. CI test setup fixes isolate old grouped-projection counters and restore
   Darwin feature declarations. Remote platform rerun pending. Direct review
   approved; all-family/device/precision qualification remains incomplete.
+
+- User directed adoption of Strata-style drafting and reaffirmed the goal as
+  faster usable Colibri through actual UnbiasedStrata runtime ports. Changed
+  native/launcher/collector maximum to3; preserved explicit depth overrides,
+  existing cost gate, exact target verification and historical measurements.
+  Launcher5 and collector28 tests passed; native frontier passed; rebuilt real
+  model selected maximum3 and matched explicit maximum1 IDs/LP/output for eight
+  generated tokens. Direct review approved. This preference change does not
+  complete the broader runtime/family/device goal.

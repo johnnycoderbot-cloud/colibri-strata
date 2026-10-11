@@ -6,8 +6,9 @@ its stated evidence exists; model-specific trained heads are separate artifacts.
 The qualified dense qwen36 CPU adapter now uses the authentic pretrained
 sequential MTP cell and passed exact real-target rollback/frontier tests.
 The complete CPU fork measured +15.1% paired decoding speed over unchanged
-Colibri; MTP alone measured +13.1%. Maximum-one drafting remains the default
-after workload-dependent depth-two/three trials. The separate locally fitted
+Colibri; MTP alone measured +13.1%, both with maximum-one drafting. The current
+default permits three sequential drafts, following Strata's verification window,
+with the adaptive cost gate retained. The separate locally fitted
 independent heads remain experimental and measured slower on fresh requests.
 Other families, device paths and a matched Strata run remain pending.
 [Current measurements and qualification](sequential-mtp.md)

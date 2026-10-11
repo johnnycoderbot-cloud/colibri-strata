@@ -57,14 +57,17 @@ python c/tools/convert_qwen36.py --mtp-only --model SOURCE_CHECKPOINT \
   --native-precision 'qwen36:DBITS=8;IDOT=1;kernel=cpu;tap=post-final-norm-mtp/v1'
 make -C c qwen36 strata-native-check
 c/coli run --model NATIVE_MODEL --gpu none --mtp-dir NEW_MTP_DIR \
-  --mtp-drafts 1 --temp 0 'Explain CPU caches.'
+  --mtp-drafts 3 --temp 0 'Explain CPU caches.'
 ```
 
 Sidecar conversion is explicit, preserves source/native assets, refuses existing
 output directories, and binds exact target bytes/precision/tap to the sidecar's
 payload digest. Default target conversion still skips MTP. Depths 2/3 pass
-actual model-output/hidden-state correctness checks. The default remains a
-maximum of one draft after the deeper-window comparisons below.
+actual model-output/hidden-state correctness checks. The default now permits a
+maximum of three drafts, following the requested Strata-style window. The
+adaptive cost gate can select shorter proposals. An explicit `--mtp-drafts 1`
+or `2` still overrides this maximum, as does an existing `Q36_MTP_DRAFTS` value
+when the CLI flag is omitted.
 
 ## Measured draft-depth choice
 
@@ -81,8 +84,10 @@ IDs, logprobs and output hashes matched; assets were unchanged before/after.
 | Three | +0.1% | -1.1% | +6.6% | -3.4% |
 
 Maximum three also lost 1.9% on the paired whole-request wall metric. Deeper
-windows help the Python request, but the mixed results do not justify increasing
-the general default. Maximum one retains the previously measured MTP gain.
+windows help the Python request; the results vary by workload. The user selected
+the Strata-style maximum of three after these trials. The earlier +13.1% MTP and
++15.1% stock comparisons specifically used maximum one; changing the default
+does not change those recorded measurements.
 The reports include MTP-only acceptance by offset and actual chosen depths;
 their shared verifier totals may also contain existing prompt lookup proposals.
 [Maximum two evidence](../experimental/strata/results/pretrained-mtp-maximum2-vs1.json),

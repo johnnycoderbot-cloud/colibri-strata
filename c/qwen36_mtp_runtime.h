@@ -162,7 +162,7 @@ static void q36_mp_init(Model *m,const char *target_dir) {
     if(g_vk_ready){fprintf(stderr,"[qwen36 MTP] active Vulkan cell qualification pending\n");exit(1);}
 #endif
     const char *depth=getenv("Q36_MTP_DRAFTS");char *end=NULL;errno=0;
-    long requested=depth&&*depth?strtol(depth,&end,10):1;
+    long requested=depth&&*depth?strtol(depth,&end,10):3;
     if(errno || (depth&&*depth&&(end==depth||*end)) || requested<1 || requested>3) {
         fprintf(stderr,"Q36_MTP_DRAFTS must be 1, 2 or 3\n");exit(1);
     }
