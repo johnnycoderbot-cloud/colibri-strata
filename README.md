@@ -1,3 +1,49 @@
+# Colibri-Strata
+
+A fork of [JustVugg/colibri](https://github.com/JustVugg/colibri) pursuing
+**independent parallel future-token heads** and Strata-inspired memory scheduling
+across every Colibri text-generation family.
+
+**Current status: experimental portable core, offline trainer, and integration
+contracts. The new primitives are not yet connected to the production inference
+loops.** Existing Colibri engines run as upstream. This fork does not promise
+200 tokens/s, new trained model weights, or accelerated decoding across all families.
+
+Included now:
+
+- Pure-C low-rank heads: each predicts a different future token from the **same**
+  hidden vector, with OpenMP parallelism across heads and a scalar fallback.
+- Target-only greedy verification with explicit snapshot, restore, commit, EOS,
+  output budget and failure handling. The reference verifier replays committed
+  tokens; production adapters must account for that cost.
+- An INT8 block codec, bounded decaying hot-expert selection, and two-slot prefetch
+  lifecycle with transfer and consumer fences. These are reference primitives;
+  CUDA/HIP transfers, model KV layouts and actual residency need backend adapters.
+- Offline training and C weight export from checkpoint-identified hidden traces.
+  Trained heads are specific to a checkpoint, tokenizer, quantization and hidden tap.
+
+```sh
+git clone https://github.com/johnnycoderbot-cloud/colibri-strata.git
+cd colibri-strata
+make -C c strata-check          # C behavior tests + trace/pack checks
+make -C c strata-sanitize       # Linux GCC/Clang ASan + UBSan
+make -C c strata-bench          # synthetic head timing, not model tokens/s
+```
+
+[Architecture and family coverage](docs/strata-fork.md) ·
+[Training and head contract](experimental/strata/README.md) ·
+[Benchmark protocol](docs/strata-benchmarks.md) ·
+[Integration roadmap](docs/strata-roadmap.md)
+
+Colibri's Apache-2.0 license and upstream history are retained. The implementation
+below is original; no Strata source or weights were copied. Strata is credited for
+the scheduling ideas. Its native MTP is a sequential drafter with batched target
+checking; this fork's independent future heads are an additional research direction.
+
+---
+
+## Upstream Colibri
+
 <p align="center">
   <img src="assets/colibri-logo.svg" width="560" alt="colibrì: tiny engine, immense model">
 </p>

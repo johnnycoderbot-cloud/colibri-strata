@@ -3014,6 +3014,48 @@ tests/test_kimi_cuda_expert$(EXE): tests/test_kimi_cuda_expert.c kimi_k3.c $(VK_
 # target therefore also depends on its own .d through an empty rule: a missing
 # .d counts as out of date, the target is rebuilt, and that compile writes it.
 # The same covers a .d deleted by hand.
+# Portable experimental fork gates; no model, GPU or network required.
+.PHONY: strata-check strata-check-scalar strata-sanitize strata-bench strata-training-check
+STRATA_CHECK_CFLAGS ?= -std=c99 -O2 -Wall -Wextra -Werror
+
+tests/test_strata_heads$(EXE): tests/test_strata_heads.c strata_heads.h
+	$(CC) $(CFLAGS) $< -o $@ $(LDFLAGS)
+
+tests/test_strata_memory$(EXE): tests/test_strata_memory.c strata_memory.h
+	$(CC) $(CFLAGS) $< -o $@ $(LDFLAGS)
+
+tests/bench_strata_heads$(EXE): tests/bench_strata_heads.c strata_heads.h
+	$(CC) $(CFLAGS) $< -o $@ $(LDFLAGS)
+
+strata-check: tests/test_strata_heads$(EXE) tests/test_strata_memory$(EXE) tests/test_spec_draft$(EXE)
+	./tests/test_strata_heads$(EXE)
+	./tests/test_strata_memory$(EXE)
+	./tests/test_spec_draft$(EXE)
+	$(PYTHON) -m unittest discover -s ../experimental/strata -p 'test_*.py' -v
+
+strata-check-scalar:
+	$(CC) $(STRATA_CHECK_CFLAGS) tests/test_strata_heads.c -lm -o tests/test_strata_heads_scalar$(EXE)
+	./tests/test_strata_heads_scalar$(EXE)
+	$(CC) $(STRATA_CHECK_CFLAGS) tests/test_strata_memory.c -lm -o tests/test_strata_memory_scalar$(EXE)
+	./tests/test_strata_memory_scalar$(EXE)
+
+# GCC/Clang on supported sanitizer hosts. Reference checks rely on isfinite;
+# do not compile these primitives with fast-math/finite-math-only.
+strata-sanitize:
+	$(CC) $(STRATA_CHECK_CFLAGS) -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer tests/test_strata_heads.c -lm -o tests/test_strata_heads_sanitize$(EXE)
+	./tests/test_strata_heads_sanitize$(EXE)
+	$(CC) $(STRATA_CHECK_CFLAGS) -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer tests/test_strata_memory.c -lm -o tests/test_strata_memory_sanitize$(EXE)
+	./tests/test_strata_memory_sanitize$(EXE)
+
+strata-bench: tests/bench_strata_heads$(EXE)
+	./tests/bench_strata_heads$(EXE)
+
+# Optional torch must already be installed; avoid counting a skip as training.
+strata-training-check:
+	$(PYTHON) -c "import torch; print(torch.__version__)"
+	$(PYTHON) -m unittest discover -s ../experimental/strata -p 'test_*.py' -v
+	$(PYTHON) ../experimental/strata/export_smoke.py --cc "$(CC)"
+
 AUTODEP_ELSEWHERE = test_segment_adapters_registration test_segment_adapters_real \
 	test_edge_adapters_registration test_edge_adapters_real test_deepseek_v4 \
 	test_v4_serve_framing

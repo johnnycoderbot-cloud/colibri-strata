@@ -1,0 +1,2 @@
+# Optional offline trainer only; the C inference primitives have no dependencies.
+torch>=2.6,<3

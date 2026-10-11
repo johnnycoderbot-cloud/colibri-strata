@@ -1,0 +1,52 @@
+name: Strata experimental core
+
+on:
+  push:
+    branches: [main, 'codex/**']
+    paths:
+      - 'c/strata_*.h'
+      - 'c/tests/*strata*'
+      - 'c/Makefile'
+      - 'c/family_registry.py'
+      - 'experimental/strata/**'
+      - '.github/workflows/strata-core.yml'
+  pull_request:
+    paths:
+      - 'c/strata_*.h'
+      - 'c/tests/*strata*'
+      - 'c/Makefile'
+      - 'c/family_registry.py'
+      - 'experimental/strata/**'
+      - '.github/workflows/strata-core.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  portable:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: OpenMP core and upstream draft gate regression
+        env:
+          OMP_NUM_THREADS: '4'
+        run: make -C c strata-check
+      - name: Scalar fallback
+        run: make -C c strata-check-scalar
+      - name: ASan and UBSan
+        run: make -C c strata-sanitize
+  offline-training:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install optional CPU trainer
+        run: python -m pip install -r experimental/strata/requirements-training.txt --index-url https://download.pytorch.org/whl/cpu
+      - name: Trace, identity, offset and independent-training tests
+        run: make -C c strata-training-check

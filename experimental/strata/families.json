@@ -1,0 +1,19 @@
+{
+  "schema": "colibri.strata.family-integration/v1",
+  "base_commit": "bf2442915d6e3dd4cdfd2eb9c2a3d2aa44a25850",
+  "families": {
+    "glm": {"modality": "text", "parallel_heads": "pending", "verifier": "upstream"},
+    "glm53": {"modality": "text", "parallel_heads": "pending", "verifier": "pending"},
+    "inkling": {"modality": "text", "parallel_heads": "pending", "verifier": "pending"},
+    "kimi": {"modality": "text", "parallel_heads": "pending", "verifier": "pending"},
+    "olmoe": {"modality": "text", "parallel_heads": "pending", "verifier": "pending"},
+    "qwen36": {"modality": "text", "parallel_heads": "pending", "verifier": "upstream-guarded"},
+    "qwen38": {"modality": "text", "parallel_heads": "pending", "verifier": "upstream"},
+    "deepseek_v4": {"modality": "text", "parallel_heads": "pending", "verifier": "upstream-opt-in"},
+    "deepseek_v41": {"modality": "text", "parallel_heads": "pending", "verifier": "upstream"},
+    "mimo": {"modality": "text", "parallel_heads": "pending", "verifier": "pending"},
+    "qwen_image": {"modality": "image", "parallel_heads": "not-applicable", "verifier": "not-applicable"},
+    "laya": {"modality": "decision", "parallel_heads": "not-applicable", "verifier": "not-applicable"},
+    "gliner_decide": {"modality": "decision", "parallel_heads": "not-applicable", "verifier": "not-applicable"}
+  }
+}

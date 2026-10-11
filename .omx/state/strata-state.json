@@ -1,0 +1,19 @@
+{
+  "workflow": "ultrawork",
+  "runtime": "native-in-session",
+  "detached_team_active": false,
+  "scope": "GitHub fork bootstrap and tested portable all-family interfaces",
+  "tasks": [
+    {"id": "source-map", "owner": "/root/architecture", "role": "explorer", "status": "approved", "handoff": "docs/strata-fork.md and .omx/research/summary.md"},
+    {"id": "parallel-heads", "owner": "/root/parallel_heads", "role": "worker", "status": "approved", "handoff": "c/strata_heads.h; scalar/OpenMP/ASan/UBSan tests pass"},
+    {"id": "memory-primitives", "owner": "/root/memory_primitives", "role": "worker", "status": "approved", "handoff": "c/strata_memory.h; strict C99 and sanitizer tests pass"},
+    {"id": "trainer-and-build", "owner": "/root", "role": "executor", "status": "approved", "handoff": "8 Python tests including training; generated C head prediction parity passed"},
+    {"id": "publish-fork", "owner": "/root", "role": "operator", "status": "active", "handoff": "Public fork created; code publication and GitHub CI pending"}
+  ],
+  "review": {"owner": "/root/architecture", "verdict": "approved", "scope": "documented experimental core only"},
+  "production_engine_adapters": "pending",
+  "real_model_head_quality": "pending",
+  "cuda_hip_transfer_integration": "pending",
+  "model_kv_int8_integration": "pending",
+  "real_model_performance": "unmeasured"
+}
