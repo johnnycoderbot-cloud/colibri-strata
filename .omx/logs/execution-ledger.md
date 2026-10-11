@@ -98,3 +98,7 @@
   separately passed). Published functional commit6855039471a3fbbf2c4ad9f5e397d152bb29a04c.
   Graph CI38107182186 and portable-core CI38107182267 dispatched; online status
   pending at publication. No full-model TPU/AIPU qualification claim.
+- Graph-runtime CI38107182186 completed successfully on both Linux and Windows at
+  functional commit6855039, including optional model/media packages and CPU IR.
+  Portable-core rerun38107182267 remains in progress; its unchanged core has the
+  prior sanitizer/fuzz qualification and local native gateway/registry checks.

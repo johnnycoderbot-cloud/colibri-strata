@@ -6,7 +6,7 @@
   "tasks": [
     {"owner": "/root/memory_primitives", "files": ["c/stream_runtime.py", "c/tests/test_stream_runtime.py", "c/tests/test_runtime_gateway.py"], "status": "complete; Windows and WSL verified"},
     {"owner": "/root/parallel_heads", "files": ["c/stream_models.py", "c/stream_media.py", "c/tests/test_stream_models.py"], "status": "complete; Windows GenAI2026.4.1 speech GPU refused after failed teardown qualification"},
-    {"owner": "/root", "task": "registry CLI API model preparation integration and publication", "status": "published6855039; local64 tests passed with1POSIXskip; CI in progress"},
+    {"owner": "/root", "task": "registry CLI API model preparation integration and publication", "status": "published6855039; local64 tests passed with1POSIXskip; Linux/Windows graph CI38107182186 passed; portable-core rerun pending"},
     {"owner": "/root/architecture", "task": "architecture map and independent review", "status": "approved implementation with explicit hardware qualification limits"}
   ],
   "real_model_replay": "trained text/camera CPU and GPU correct; speech CPU and GPU full JFK transcript correct; authenticated gateway CPU speech and GPU text/camera passed",
