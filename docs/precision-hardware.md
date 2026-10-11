@@ -130,6 +130,11 @@ The failure tests are evidence for these paths, not a claim of zero bugs. Produc
 engine adapters, real-model acceptance/quality, hardware DMA integration and native
 integer kernels remain distinct gates.
 
+Final verification: [focused CI on the published code](https://github.com/johnnycoderbot-cloud/colibri-strata/actions/runs/38104321143)
+passed, including OpenVINO CPU, generated build dependencies, training/export,
+sanitizers and coverage-guided fuzzing. Local physical GPU/AIPU/NVMe evidence is
+summarized in [.omx/research/precision-hardware-summary.json](../.omx/research/precision-hardware-summary.json).
+
 Primary references: [DirectML provider](https://onnxruntime.ai/docs/execution-providers/DirectML-ExecutionProvider.html),
 [OpenVINO NPU](https://docs.openvino.ai/2026/openvino-workflow/running-inference/inference-devices-and-modes/npu-device.html),
 [AIPU compiler](https://docs.axelera.ai/sdk/reference/compiler/compiler-api/),

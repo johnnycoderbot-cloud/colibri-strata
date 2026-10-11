@@ -1,5 +1,6 @@
 {
   "workflow": "ultrawork",
+  "status": "complete",
   "runtime": "native-in-session",
   "detached_team_active": false,
   "scope": "GitHub fork bootstrap and tested portable all-family interfaces",

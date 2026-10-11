@@ -56,3 +56,11 @@
   made installed SDK entry/environment explicit. No vendor name in public labels.
 - User raised speech/translation/camera expansion. Documented model-family and
   streaming-runtime design; those workloads are not falsely marked implemented.
+- Final code31707104752f5c6961418f775eb366c2f7be0a9a verified by focused CI
+  run38104321143, all jobs passed: generated-dependency regression, OpenVINO native
+  CPU paths, training/export, precision tests, seeded sanitizer campaign and libFuzzer.
+- Independent latest review approved. Local Windows42checks passed41 with POSIX
+  FIFOinapplicable; actualLinuxFIFO/race6checks passed. NativeOpenVINOGPU+CPU
+  allsourcebits4/8/16 physical placement/parity passed; no physicalNPU/TPU available.
+- Precision/hardware hardening slice complete; speech/translation/camera runtime
+  implementation remains tracked separately at GitHubissue6.
