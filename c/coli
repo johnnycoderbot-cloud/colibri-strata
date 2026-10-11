@@ -537,11 +537,33 @@ def operator_cap(a, arch):
         cap=0
     return cap if cap else None
 
+def parallel_heads_env(a, arch, env):
+    """Expose the qualified adapter; an unsupported family must not ignore it."""
+    pack = getattr(a, "parallel_heads", None) or env.get("COLI_STRATA_HEADS")
+    trace = env.get("COLI_STRATA_TRACE")
+    mode = getattr(a, "head_input", None)
+    if not pack and not trace:
+        if mode:
+            raise ValueError("--head-input requires --parallel-heads or COLI_STRATA_TRACE")
+        return env
+    if arch != "qwen36":
+        raise ValueError("parallel heads currently require the qualified qwen36 CPU adapter; other families are pending")
+    if getattr(a, "device", "AUTO") not in ("AUTO", "CPU"):
+        raise ValueError("parallel heads currently require the qualified CPU adapter")
+    if pack:
+        path = os.path.abspath(os.path.expanduser(pack))
+        if not os.path.isfile(path):
+            raise ValueError("parallel head pack must be an existing CSNH file")
+        env["COLI_STRATA_HEADS"] = path
+    if mode:
+        env["COLI_STRATA_INPUT"] = mode
+    return env
+
 def env_for_engine(a, arch, plan=None):
     if arch == "glm":
         return env_for(a)
     explicit_env = set(os.environ)
-    env = os.environ.copy()
+    env = parallel_heads_env(a, arch, os.environ.copy())
     env.pop(_PROFILE_CAP_ENV,None)
     env.pop(_PLAN_CAP_ENV,None)
     family=family_by_id(arch)
@@ -912,7 +934,7 @@ def report_unapplied_vram_tier(plan, gpu_off_by_request=False):
 
 def env_for(a):
     explicit_env = set(os.environ)
-    e = dict(os.environ, SNAP=a.model)
+    e = parallel_heads_env(a, "glm", dict(os.environ, SNAP=a.model))
     e.pop(_PROFILE_CAP_ENV,None)
     e.pop(_PLAN_CAP_ENV,None)
     if getattr(a,"ram",0): explicit_env.add("RAM_GB")
@@ -3550,6 +3572,10 @@ def main():
     common.add_argument("--think", action="store_true", default=None)
     common.add_argument("--no-think", dest="think", action="store_false")
     common.add_argument("--temp", type=float, default=None)  # temperatura token (0=greedy, default 1.0+nucleus .95)
+    common.add_argument("--parallel-heads", metavar="CSNH", default=None,
+                        help="experimental native parallel proposal bank (qualified qwen36 CPU; defaults to greedy)")
+    common.add_argument("--head-input", choices=("hidden", "next-embedding"), default=None,
+                        help="feature tap used when training the parallel bank")
     common.add_argument("--cluster-workers", default=os.environ.get("CLUSTER_WORKERS"),
                         help="comma-separated expert workers, host:port,...")
     common.add_argument("--cluster-coordinator", default=os.environ.get("CLUSTER_COORDINATOR"),
@@ -3728,6 +3754,17 @@ def main():
         help="int4 scale group size: 64 (default, group-scaled quality) or 0 (legacy per-row)")
     pc.add_argument("--no-mtp",action="store_true",help="skip the MTP head (no speculative drafts)")
     a=ap.parse_args()
+    requested_parallel = getattr(a, "parallel_heads", None) or getattr(a, "head_input", None)
+    inherited_parallel = os.environ.get("COLI_STRATA_HEADS") or os.environ.get("COLI_STRATA_TRACE")
+    if requested_parallel or (a.cmd in ("run", "chat", "serve") and inherited_parallel):
+        if a.cmd not in ("run", "chat", "serve"):
+            ap.error("parallel heads apply to run, chat and serve")
+        try:
+            parallel_heads_env(a, model_arch(a.model), os.environ.copy())
+        except (ValueError, FamilyConfigError, UnknownFamilyError) as error:
+            ap.error(str(error))
+        if (a.parallel_heads or os.environ.get("COLI_STRATA_HEADS")) and a.temp is None:
+            a.temp = 0
     handler={"build":cmd_build,"info":cmd_info,"plan":cmd_plan,"mirror":cmd_mirror,
              "prepare-runtime":cmd_runtime,"transcribe":cmd_runtime,"upscale":cmd_runtime,
              "doctor":cmd_doctor,"tune":cmd_tune,

@@ -102,3 +102,31 @@
   functional commit6855039, including optional model/media packages and CPU IR.
   Portable-core rerun38107182267 remains in progress; its unchanged core has the
   prior sanitizer/fuzz qualification and local native gateway/registry checks.
+
+- Native throughput objective resumed with real Qwen3.5-0.8B and OLMoE checkpoints.
+  New qwen36 CPU head bank reads shared committed hidden/known-token embedding;
+  offsets2/3 run independently and target verifies/retains matching states.
+- CPU output projection groups exact F32/F16/INT8 rows; MoE staging groups by
+  distinct experts and preserves balanced holds. Strict and ASan/UBSan checks pass.
+- First learned hidden-only head retained heldout IDs/LP but paired median0.975:
+  no acceleration claim. Initial augmented training diverged; RMS normalization
+  folded into weights plus seeded shuffled/clipped optimization stabilized it.
+  Two-head heldout top1 .129/.0797 and bothprefix .0323 remain overfit, timing pending.
+- Active-bank real-target gates prove rejection, acceptance, budget clipping,
+  pin/continuation, sampling fallback, EOS/cancellation rollback. Synthetic oracle
+  fixtures are correctness-only. Loader FIFO blocking and bank export overwrite
+  fixed; native identity binds IDOT/INT8/tap and actual tensor/tokenizer bytes.
+- New capture/paired benchmark tools, explicit qualified CLI flags and focused
+  native CI added. All-family/device speed objective remains in progress.
+- Requested regular-Colibri comparison completed: lookup enabled in both arms,
+  same native Qwen3.5-0.8B INT8/integer-dot,8threads,3heldoutprompts*5pairs.
+  Median arm decode39.829vs39.471tok/s;medianpairedratio1.01455,8wins7losses.
+  IDs/logprobs/outputs identical. Results mixed:no clear repeatable speedup.
+- Strata reference61b3fb5 verified clean: full default runtime CUDA/HIP-only;
+  experimentalSYCL lacks supported localIntelUHD setup and cannot our0.8Bgeometry.
+  OfficialRTX5070Q2_0FlashNext93.0at4K/73.7at128K retained as separate published
+  references. No fabricated localStrata score or cross-hardware speed ratio.
+- Final native focusedgate passed4C+32Python,training10+coverage1,converter6,
+  generateddependencies8 and finalloader/kernelASan+UBSan. IndependentCPUreview
+  approved. Tested native adapter and curated comparison ready for publication;
+  overall all-family/device/throughput objective remains incomplete.

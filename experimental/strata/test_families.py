@@ -16,7 +16,7 @@ class FamilyCoverageTests(unittest.TestCase):
             row = entries[family.id]
             self.assertEqual(row["modality"], family.modality)
             if family.modality == "text":
-                self.assertEqual(row["parallel_heads"], "pending")
+                self.assertEqual(row["parallel_heads"], "experimental-cpu" if family.id == "qwen36" else "pending")
                 self.assertIn(row["verifier"], ("pending", "upstream", "upstream-guarded", "upstream-opt-in"))
             else:
                 self.assertEqual(row["parallel_heads"], "not-applicable")

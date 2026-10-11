@@ -1,7 +1,19 @@
 # Benchmark protocol
 
-No real-model speedup has been measured for the new fork components. The head
-microbenchmark measures a synthetic F32 head bank only; it is not model tokens/s.
+A real native comparison now exists, with **no clear repeatable speedup**:
+unchanged Colibri 39.829 vs the two-head CPU fork 39.471 median tokens/s across
+15 interleaved pairs, identical outputs. Both use Qwen3.5-0.8B, INT8/integer-dot,
+8 CPU threads and existing prompt lookup. The candidate won eight pairs and lost
+seven. [Raw measurements and identity](../experimental/strata/results/native-cpu-comparison.json)
+
+Strata was not run locally: this Intel UHD machine has no supported Strata
+setup/backend, and Strata does not accept the small dense checkpoint. Its
+published Qwen3.8-Flash-Next Q2_0 GPU references are 93.0 tokens/s at 4K and 73.7
+at 128K on an RTX5070. These are a separate model/hardware reference, not fair
+ratios against our CPU run. [Pinned Strata measurements](https://github.com/Niko1221/Strata/blob/61b3fb5dd3f1e8ec09cf7e4e05208bc6d3c46406/docs/DETAILS.md)
+
+The head microbenchmark remains a synthetic F32 head-bank measurement rather
+than model tokens/s. Controlled oracle-biased native banks prove rollback only.
 
 Use the existing `c/tools/benchmark_http_serving.py` / `benchmark_baseline.py`
 collectors where suitable. For each ablation save raw logs plus a manifest with:

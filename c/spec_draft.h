@@ -14,11 +14,14 @@
  *   SpecGate      how many drafts a verify should carry. Per source it keeps the running
  *                 probability a_j that draft j is accepted when the drafts before it were,
  *                 the measured seconds T(n) of a forward of n rows, and the measured seconds
- *                 d a source spends on each draft past its first. The depth k it picks
+ *                 d a sequential source spends on each draft past its first.
+ *                 A parallel source records one whole-bank invocation, including
+ *                 the first proposal, independent of selected depth. The depth k it picks
  *                 maximizes the expected tokens per second of a verify against a plain step:
  *                     value(k) = E(k) / cost(k)
  *                     E(k)     = 1 + a_1 + a_1 a_2 + ... + a_1 ... a_k   (tokens it yields)
- *                     cost(k)  = (T(k+1) + (k-1) d) / T(1)              (in decode steps)
+ *                     cost(k)  = (T(k+1) + (k-1) d) / T(1)              (sequential)
+ *                     cost(k)  = (T(k+1) + d) / T(1)                    (parallel bank)
  *                 and drafts only when value(k) > 1 (k = 0 is a plain step, value 1). A row
  *                 count not measured yet costs T(1) (1 + (n-1) rho), rho fitted from the
  *                 multi-row forwards that ran (SPEC_RHO0 until one has). Every SPEC_PROBE
@@ -46,7 +49,7 @@
 #define SPEC_ACC_W      16.0       /* the acceptance's memory, in verifies */
 #define SPEC_T_W        8.0        /* a forward time's memory, in forwards */
 
-enum { SPEC_SRC_MTP = 0, SPEC_SRC_LOOKUP = 1, SPEC_NSRC = 2 };
+enum { SPEC_SRC_MTP = 0, SPEC_SRC_LOOKUP = 1, SPEC_SRC_PARALLEL = 2, SPEC_NSRC = 3 };
 
 typedef struct {
     double acc[SPEC_NSRC][SPEC_MAX_DRAFTS];   /* a_{j+1}: P(draft j+1 accepted | drafts 1..j accepted) */
@@ -72,6 +75,8 @@ static inline void spec_gate_init(SpecGate *g, int off) {
         g->acc[SPEC_SRC_MTP][j] = j == 0 ? 0.8 : j == 1 ? 0.6 : 0.5;
         g->acc[SPEC_SRC_LOOKUP][j] = 0.5;
         g->acc_w[SPEC_SRC_MTP][j] = g->acc_w[SPEC_SRC_LOOKUP][j] = 2.0;
+        g->acc[SPEC_SRC_PARALLEL][j] = 0.5;
+        g->acc_w[SPEC_SRC_PARALLEL][j] = 2.0;
     }
     g->rho = SPEC_RHO0; g->rho_w = 1.0;
 }
@@ -130,7 +135,8 @@ static inline double spec_gate_value(const SpecGate *g, int src, int k, double *
     double e = 1.0, p = 1.0;
     for (int j = 0; j < k && j < SPEC_MAX_DRAFTS; j++) { p *= g->acc[src][j]; e += p; }
     double cost = spec_gate_rows_cost(g, k + 1);
-    if (k > 1 && g->d_w[src] > 0.0 && g->t_w[1] > 0.0 && g->t[1] > 0.0) cost += (k - 1) * g->d[src] / g->t[1];
+    if (g->d_w[src] > 0.0 && g->t_w[1] > 0.0 && g->t[1] > 0.0)
+        cost += (src == SPEC_SRC_PARALLEL ? 1 : k-1) * g->d[src] / g->t[1];
     if (expect) *expect = e;
     return k > 0 ? e / cost : 1.0;
 }
@@ -173,7 +179,7 @@ static inline void spec_gate_describe(const SpecGate *g, int src, char *buf, siz
     for (int n = 2; n <= SPEC_MAX_DRAFTS + 1; n++)
         if (g->t_w[n] > 0.0) SPEC_PUT(" %d:%.2f", n, spec_gate_rows_cost(g, n));
     SPEC_PUT(", rho %.2f", g->rho);
-    if (g->d_w[src] > 0.0) SPEC_PUT(", %.1f ms per extra draft", 1e3 * g->d[src]);
+    if (g->d_w[src] > 0.0) SPEC_PUT(src == SPEC_SRC_PARALLEL ? ", %.1f ms per bank" : ", %.1f ms per extra draft", 1e3 * g->d[src]);
     SPEC_PUT(", acceptance by position");
     for (int j = 0; j < 5; j++) SPEC_PUT(" %.2f", g->acc[src][j]);
 #undef SPEC_PUT

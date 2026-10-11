@@ -102,6 +102,58 @@ class HeadsTests(unittest.TestCase):
                 prediction = int(torch.argmax(up @ (down @ torch.tensor(row["hidden"])) + bias))
                 self.assertEqual(prediction, row["future_tokens"][k + 1])
 
+    @unittest.skipUnless(importlib.util.find_spec("torch"), "optional torch unavailable")
+    def test_fixed_scaling_folds_into_down_with_outliers(self):
+        import torch
+        x = torch.tensor([[1e20, 2e-6, 0., 1e-20], [-2e20, 1e-6, 0., -2e-20]], dtype=torch.float32)
+        scale = heads._feature_scale(x)
+        self.assertTrue(bool(torch.all(torch.isfinite(scale))))
+        self.assertEqual(float(scale[2]), 1.)
+        self.assertEqual(float(scale[3]), 1.)
+        down = torch.tensor([[.25, -.4, .7, .9], [-.75, .2, .1, -.8]])
+        folded = down * scale
+        # Independent F64 sums compare raw-feature exported math with training
+        # math, including vastly different magnitudes and inactive coordinates.
+        expected = (x.double() * scale.double()) @ down.double().T
+        actual = x.double() @ folded.double().T
+        torch.testing.assert_close(actual, expected, atol=1e-7, rtol=1e-6)
+
+    @unittest.skipUnless(importlib.util.find_spec("torch"), "optional torch unavailable")
+    def test_repeat_seed_and_mixed_scale_training_quality(self):
+        import torch
+        meta = header() | {"hidden_size": 4, "native_fingerprint": "c" * 64}
+        rows = [{"hidden": [1e8, 0., 0., 0.], "future_tokens": [0, 1, 2]},
+                {"hidden": [0., 1e-5, 0., 0.], "future_tokens": [0, 3, 1]},
+                {"hidden": [-1e8, 0., 0., 0.], "future_tokens": [0, 2, 3]},
+                {"hidden": [0., -1e-5, 0., 0.], "future_tokens": [0, 0, 0]}]
+        self.write(meta=meta, rows=rows)
+        progress = []
+        first = heads.train(self.path, [2, 3], 4, 300, 4, .05, 77, progress=progress.append)
+        torch.manual_seed(9001)
+        second = heads.train(self.path, [2, 3], 4, 300, 4, .05, 77)
+        self.assertEqual(first, second)
+        self.assertEqual(first["identity"]["native_fingerprint"], "c" * 64)
+        self.assertEqual(first["training"]["feature_normalization"], "coordinate-rms-folded-into-down/v1")
+        self.assertFalse(first["training"]["quality_validated"])
+        self.assertEqual(progress[-1]["step"], 300)
+        self.assertLess(first["training"]["last_loss"], first["training"]["first_loss"] * .1)
+        for k, head in enumerate(first["heads"]):
+            down = torch.tensor(head["down"]).reshape(4, 4)
+            up = torch.tensor(head["up"]).reshape(4, 4)
+            bias = torch.tensor(head["bias"])
+            logits = torch.tensor([row["hidden"] for row in rows]) @ down.T @ up.T + bias
+            self.assertEqual(logits.argmax(dim=-1).tolist(), [row["future_tokens"][k + 1] for row in rows])
+
+    @unittest.skipUnless(importlib.util.find_spec("torch"), "optional torch unavailable")
+    def test_shuffles_cover_epoch_and_cross_boundaries(self):
+        import torch
+        generator = torch.Generator().manual_seed(42)
+        batches = heads._shuffled_batches(7, 3, generator)
+        values = torch.cat([next(batches) for _ in range(3)]).tolist()
+        self.assertEqual(sorted(values[:7]), list(range(7)))
+        self.assertEqual(len(values), 9)
+        self.assertTrue(all(0 <= v < 7 for v in values))
+
 
 if __name__ == "__main__":
     unittest.main()

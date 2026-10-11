@@ -3,6 +3,8 @@
 experimental/strata/generated/
 models-stream/
 outputs-stream/
+models-native/
+outputs-native/
 c/mio_env/
 __pycache__/
 **/__pycache__/

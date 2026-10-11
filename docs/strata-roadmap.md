@@ -3,6 +3,12 @@
 Portable-core tests are the starting gate. Each task below remains pending until
 its stated evidence exists; model-specific trained heads are separate artifacts.
 
+The first qwen36 CPU adapter and real capture are now implemented and have
+exact real-target rollback/frontier tests. The two-head bank has no clear
+repeatable throughput gain in the regular-Colibri comparison. Other families,
+device paths and a matched Strata run remain pending.
+[Current measurements](../experimental/strata/results/native-cpu-comparison.json)
+
 Tracked on GitHub:
 
 - [All-family head adapters #1](https://github.com/johnnycoderbot-cloud/colibri-strata/issues/1)

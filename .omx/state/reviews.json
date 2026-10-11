@@ -1,13 +1,30 @@
-{
-  "schema_version": 1,
-  "reviews": [
-    {
-      "id": "streaming-runtime-code",
-      "reviewer": "/root/architecture",
-      "status": "approved",
-      "scope": "registry, CLI, gateway, media transport, queue/cancel/close ownership and truthful backend reporting",
-      "fixed_findings": ["registry lookup applied fixed inference budget and hashed every asset", "HTTP exception class mismatch when launched as a script", "native graph flags ignored", "MIME aliases and duplicate parameters accepted", "palette partial transparency lost", "unproven text finish reason"],
-      "qualification_limits": ["trained model replay is a separate gate", "GenAI placement not independently exposed", "physical compatible NPU absent", "full-model TPU/AIPU adapters pending"]
-    }
-  ]
-}
+[
+  {
+    "id": "streaming-runtime-code",
+    "reviewer": "/root/architecture",
+    "status": "approved",
+    "scope": "registry, CLI, gateway, media transport, queue/cancel/close ownership and truthful backend reporting",
+    "fixed_findings": [
+      "registry lookup applied fixed inference budget and hashed every asset",
+      "HTTP exception class mismatch when launched as a script",
+      "native graph flags ignored",
+      "MIME aliases and duplicate parameters accepted",
+      "palette partial transparency lost",
+      "unproven text finish reason"
+    ],
+    "qualification_limits": [
+      "trained model replay is a separate gate",
+      "GenAI placement not independently exposed",
+      "physical compatible NPU absent",
+      "full-model TPU/AIPU adapters pending"
+    ]
+  },
+  {
+    "id": "native-qwen-parallel-heads",
+    "reviewer": "/root/architecture",
+    "status": "approved",
+    "scope": "qualified qwen36 CPU adapter, shared hidden/known-token features, CSNH identity and active-bank rollback",
+    "fixed_findings": ["numeric mode missing from identity", "training fingerprint not bound during export", "FIFO loader blocking", "existing bank export overwrite", "capture minimum token cap too small"],
+    "qualification_limits": ["correctness fixtures are synthetic oracle-biased banks on a real target", "positive learned-head throughput pending", "other families/device backends pending", "sampling keeps learned heads disabled"]
+  }
+]

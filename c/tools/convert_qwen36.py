@@ -461,7 +461,10 @@ def main():
                  f"tensors for layer(s) {missing_layers[:8]}")
     globals_keys = [global_map[kind] for kind in ("embed_tokens.weight", "lm_head.weight",
                                                   "norm.weight") if kind in global_map]
-    if len(globals_keys) != 3:
+    tied_head = ("lm_head.weight" not in global_map and
+                 (mcfg.get("tie_word_embeddings") is True or cfg_full.get("tie_word_embeddings") is True))
+    if len(globals_keys) != 3 and not (tied_head and
+            "embed_tokens.weight" in global_map and "norm.weight" in global_map):
         sys.exit(f"ERROR: expected embed_tokens, lm_head and final norm, found {sorted(global_map)}")
     for k in globals_keys:
         shard_layers.setdefault(wm[k], set()).add(-1)
@@ -541,6 +544,12 @@ def main():
             arr = get_tensor(k).half()
             newk = k.replace("model.language_model.", "model.")
             g_out[newk] = arr
+        if tied_head:
+            # Separate storage is required by safetensors; tying is an explicit
+            # source-model contract, never a guess for an incomplete checkpoint.
+            embed_key = global_map["embed_tokens.weight"].replace("model.language_model.", "model.")
+            g_out["lm_head.weight"] = g_out[embed_key].clone()
+            print("[globals] materialized explicitly tied lm_head from embeddings")
         gpath = out / "model-globals.safetensors"
         save_file(g_out, str(gpath))
         print(f"[globals] {gpath.name} ({len(g_out)} tensors)")

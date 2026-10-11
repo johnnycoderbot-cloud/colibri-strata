@@ -3,10 +3,26 @@
   "status": "complete",
   "runtime": "native-in-session",
   "tasks": [
-    {"owner": "/root/memory_primitives", "task": "INT4/8/16 codec and matrix reference", "status": "approved"},
-    {"owner": "/root/parallel_heads", "task": "quantized heads and explicit ONNX/JAX runtimes", "status": "approved"},
-    {"owner": "/root/architecture", "task": "adversarial fuzz and independent review", "status": "approved"},
-    {"owner": "/root", "task": "exports, storage, physical hardware and publication", "status": "approved"}
+    {
+      "owner": "/root/memory_primitives",
+      "task": "INT4/8/16 codec and matrix reference",
+      "status": "approved"
+    },
+    {
+      "owner": "/root/parallel_heads",
+      "task": "quantized heads and explicit ONNX/JAX runtimes",
+      "status": "approved"
+    },
+    {
+      "owner": "/root/architecture",
+      "task": "adversarial fuzz and independent review",
+      "status": "approved"
+    },
+    {
+      "owner": "/root",
+      "task": "exports, storage, physical hardware and publication",
+      "status": "approved"
+    }
   ],
   "portable_precision": "tested",
   "physical_GPU_NVMe": "tested",
@@ -19,5 +35,6 @@
   "full_upstream_C_regression": "passed after CRLF SSD fixture test correction",
   "github_CI": "passed final run 38104321143",
   "verified_code_commit": "31707104752f5c6961418f775eb366c2f7be0a9a",
-  "streaming_modality_expansion": "design and issue 6; implementation pending"
+  "streaming_modality_expansion": "design and issue 6; implementation pending",
+  "active": false
 }

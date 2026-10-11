@@ -3181,9 +3181,9 @@ static void qwen_shared_experts_cpu(Model *m, Layer *l, const float *x, int S,
  * resident at once: each is held (expert_hold) until the kernel is done with
  * it, so neither the run's next load nor the PILOT worker can evict it, and
  * the batch is cut to what the layer cache can hold:
- * the whole prompt chunk when cap covers S*K slots, one token when it covers
- * K, one (token, expert) pair otherwise (cap=1 in CI evicts on every routed
- * expert). out starts at zero (moe) and every cut adds into it through the
+ * bounded chunks whose DISTINCT experts fit, or one (token, expert) pair
+ * when fewer than K slots fit (cap=1 in CI evicts on every routed expert).
+ * out starts at zero (moe) and every cut adds into it through the
  * one xf_moe_add call below, val*expert in rank order, so the three cuts
  * produce the same bits. A pair run used to go through a zeroed buffer and a
  * second add: two roundings where the fused multiply-add of an FMA build
@@ -3192,8 +3192,31 @@ static void moe_xf_run(Model *m, int layer, const float *x, int S, float *out, c
     Cfg *c = &m->c; int D = c->hidden, K = c->topk, F = c->inter;
     int cap = m->cache[layer].cap;
     int64_t gp = (int64_t)F * D / 2;
-    int per = cap >= S * K ? S : 1;           /* tokens per run */
-    int kper = cap >= K ? K : 1;              /* experts per run */
+    if (S <= 0) return;
+    /* A slot is shared by every pair that routes the same expert. Count
+     * distinct identities, not S*K, before holding a chunk; otherwise even
+     * a cache containing EVERY expert degenerates to one kernel per token.
+     * Bound both activations and metadata independently of checkpoint size. */
+    enum { XF_RUN_ROWS = 128, XF_RUN_MARKERS = 65536 };
+    const uint64_t scratch_limit = UINT64_C(64) << 20;
+    int per = S < XF_RUN_ROWS ? S : XF_RUN_ROWS;
+    int kper = cap >= K ? K : 1;
+    uint64_t pair_bytes = ((uint64_t)3*F + D)*sizeof(float) + F + 64 +
+                          (uint64_t)(F / XF_BLOCK)*sizeof(float) + 4*sizeof(int);
+    uint64_t row_bytes = (uint64_t)D + 64 + (uint64_t)(D / XF_BLOCK)*sizeof(float);
+    if (pair_bytes + row_bytes + 4096 > scratch_limit) {
+        fprintf(stderr, "qwen36: expert kernel row exceeds bounded scratch\n"); exit(1);
+    }
+    if (cap < K || c->n_experts > XF_RUN_MARKERS) per = 1;
+    if (pair_bytes*kper + row_bytes + 4096 > scratch_limit) { kper = 1; per = 1; }
+    while (per > 1 && (pair_bytes*kper + row_bytes)*(uint64_t)per + 4096 > scratch_limit) per--;
+    if (pair_bytes*kper + row_bytes + 4096 > scratch_limit) {
+        fprintf(stderr, "qwen36: expert kernel row exceeds bounded scratch\n"); exit(1);
+    }
+    const char *batch_env = getenv("QWEN_EXPERT_BATCH");
+    if (batch_env && *batch_env == '0') per = 1;
+    uint8_t *seen = per > 1 ? calloc((size_t)c->n_experts, 1) : NULL;
+    if (per > 1 && !seen) { fprintf(stderr, "OOM moe_xf_run markers\n"); exit(1); }
     int n = per * kper;
     XfExpert *ex = malloc(sizeof(XfExpert) * (size_t)n);
     const XfExpert **exp = malloc(sizeof(XfExpert *) * (size_t)n);
@@ -3202,10 +3225,32 @@ static void moe_xf_run(Model *m, int layer, const float *x, int S, float *out, c
     void *scratch = malloc(xf_moe_scratch_bytes(per, kper, D, F));
     if (!ex || !exp || !ridx || !held || !scratch) { fprintf(stderr, "OOM moe_xf_run\n"); exit(1); }
     int timed = tm_on() && S == 1;
-    for (int s0 = 0; s0 < S; s0 += per) {
+    for (int s0 = 0; s0 < S;) {
+        int rows = S-s0 < per ? S-s0 : per, distinct = 0;
+        if (seen) {
+            memset(seen, 0, (size_t)c->n_experts);
+            rows = 0;
+            while (rows < per && s0+rows < S) {
+                int added = 0;
+                for (int k = 0; k < K; k++) {
+                    int eid = idx[(int64_t)(s0+rows)*K+k];
+                    if (eid < 0) continue;
+                    if (eid >= c->n_experts) { fprintf(stderr,"qwen36: routed expert out of range\n"); exit(1); }
+                    if (!seen[eid]) { seen[eid] = 2; added++; }
+                }
+                if (distinct+added > cap) break;
+                for (int k = 0; k < K; k++) {
+                    int eid = idx[(int64_t)(s0+rows)*K+k];
+                    if (eid >= 0) seen[eid] = 1;
+                }
+                distinct += added; rows++;
+            }
+        }
+        if (rows < 1) { fprintf(stderr,"qwen36: expert chunk cannot fit cache\n"); exit(1); }
         for (int k0 = 0; k0 < K; k0 += kper) {
             double t0 = timed ? tm_now() : 0;
-            for (int s = 0; s < per; s++) for (int k = 0; k < kper; k++) {
+            int count = rows*kper;
+            for (int s = 0; s < rows; s++) for (int k = 0; k < kper; k++) {
                 int src = (s0 + s) * K + (k0 + k), dst = s * kper + k;
                 ridx[dst] = idx[src]; rval[dst] = val[src]; exp[dst] = NULL; held[dst] = NULL;
                 if (idx[src] < 0) continue;
@@ -3215,12 +3260,16 @@ static void moe_xf_run(Model *m, int layer, const float *x, int S, float *out, c
                 exp[dst] = &ex[dst];
             }
             double t1 = timed ? tm_now() : 0;
-            xf_moe_add(out + (int64_t)s0 * D, x + (int64_t)s0 * D, per, kper, D, F, ridx, rval, exp, xf_act_mode(), scratch);
+#ifdef COLI_QWEN_XF_TEST_HOOK
+            COLI_QWEN_XF_TEST_HOOK(m, rows, kper, distinct, held, count);
+#endif
+            xf_moe_add(out + (int64_t)s0 * D, x + (int64_t)s0 * D, rows, kper, D, F, ridx, rval, exp, xf_act_mode(), scratch);
             if (timed) { double t2 = tm_now(); g_xf_load += t1 - t0; g_xf_run += t2 - t1; }
-            for (int i = 0; i < n; i++) if (held[i]) slot_release(held[i]);
+            for (int i = 0; i < count; i++) if (held[i]) slot_release(held[i]);
         }
+        s0 += rows;
     }
-    free(ex); free(exp); free(ridx); free(rval); free(held); free(scratch);
+    free(ex); free(exp); free(ridx); free(rval); free(held); free(scratch); free(seen);
 }
 
 /* ---------- CACHE_ROUTE: residency-aware top-K fill (docs/CACHE_ROUTE.md) ----------
@@ -4205,6 +4254,11 @@ static void serve_echo(const char *id, int pos, int token, const float *lo, int 
  * the prompt (clef_head.h). When set, step() writes them here, [S, hidden]; the
  * DECIDE path sets it around its one prefill and nothing else ever does. */
 static float *g_hidden_sink = NULL;
+#ifdef COLI_STRATA_NATIVE
+static int g_q36_mux_slots;
+static int q36_has_clef_head(const char *);
+#include "qwen36_strata.h"
+#endif
 
 #ifdef COLI_VULKAN
 #include "qwen36_chain.h"  /* COLI_VK_CHAIN: every layer's dense chain on the device */
@@ -4281,6 +4335,9 @@ static float *step_ex(Model *m, const int *ids, int S, int pos_base, int nlogits
         for (int s = 0; s < S; s++)
             rmsnorm_row(g_hidden_sink + (int64_t)s*D, x + (int64_t)s*D, m->final_norm, D, c->eps);
     }
+#ifdef COLI_STRATA_NATIVE
+    q36_sn_capture(m,x,ids,S,pos_base);
+#endif
     /* Recorded HERE, where the tokens actually entered the state, rather than
      * derived from the caller's bookkeeping: the invariant that fed[0..len-1]
      * are the ids the state was built from is the whole safety argument. */
@@ -4313,7 +4370,25 @@ static float *step_ex(Model *m, const int *ids, int S, int pos_base, int nlogits
         free(erow); free(elog);
     }
 #endif
-    float *last = falloc(D);
+    /* The established CPU kernels keep each row's dot/reduction order.
+     * Project independent target-logit rows together so the weight stream
+     * and thread team are reused. CUDA/active Vulkan retain row dispatch;
+     * packed int4 retains its shape-sensitive AMX/vector choice as well. */
+    const char *head_batch_env = getenv("QWEN_HEAD_BATCH");
+    int head_batch = nlogits > 1 && !(head_batch_env && *head_batch_env == '0') &&
+                     !m->lm_head.q4 && (m->lm_head.w || m->lm_head.h || m->lm_head.q) &&
+                     (uint64_t)nlogits*(uint64_t)D*sizeof(float) <= (UINT64_C(32) << 20);
+#ifdef COLI_CUDA
+    head_batch = 0;
+#endif
+#ifdef COLI_VULKAN
+    if (chain_logit || (g_vk_ready && g_vk_dense)) head_batch = 0;
+#endif
+#if defined(__ARM_FEATURE_MATMUL_INT8)
+    /* The ARM multi-row integer tile needs a separate scaled-float gate. */
+    if (!m->lm_head.h && m->lm_head.q && dense_idot_on()) head_batch = 0;
+#endif
+    float *last = falloc(head_batch ? (int64_t)nlogits*D : D);
     float *logit;
 #ifdef COLI_VULKAN
     if (chain_logit) logit = chain_logit;   /* the chain ran the final norm and lm_head */
@@ -4324,11 +4399,17 @@ static float *step_ex(Model *m, const int *ids, int S, int pos_base, int nlogits
 #ifdef COLI_VULKAN
     if (!chain_logit)
 #endif
-    for (int r = 0; r < nlogits; r++) {
-        float *lr = logit + (int64_t)r * c->vocab;
-        rmsnorm_row(last, x + (int64_t)(S - nlogits + r)*D, m->final_norm, D, c->eps);
-        if (!qt_lmhead_matmul(lr, last, D, c->vocab))
-            matmul_d(lr, last, &m->lm_head, 1, D, c->vocab);
+    {
+        if (head_batch) {
+            for (int r = 0; r < nlogits; r++)
+                rmsnorm_row(last + (int64_t)r*D, x + (int64_t)(S-nlogits+r)*D, m->final_norm, D, c->eps);
+            matmul_d(logit, last, &m->lm_head, nlogits, D, c->vocab);
+        } else for (int r = 0; r < nlogits; r++) {
+            float *lr = logit + (int64_t)r * c->vocab;
+            rmsnorm_row(last, x + (int64_t)(S - nlogits + r)*D, m->final_norm, D, c->eps);
+            if (!qt_lmhead_matmul(lr, last, D, c->vocab))
+                matmul_d(lr, last, &m->lm_head, 1, D, c->vocab);
+        }
     }
     if (tm_on()) { tm_add(S, 5, tm_now()-_th); if (S==1) g_tm_dec_tokens++; else g_tm_pre_tokens += S; }
     free(x); free(last);
@@ -4778,6 +4859,10 @@ typedef struct {
     float *ahead_logit;
     uint64_t drafts, accepted, verifies, forwards, tokens;
     int ended_ahead;             /* the generation ended with a verify's rows unconsumed (undone) */
+    int ahead_src, heads;
+    float *ahead_hidden;
+    uint64_t bank_calls, bank_failures;
+    double bank_seconds;
 } Q36Spec;
 static const int *g_q36_oracle; static int g_q36_oracle_n;   /* ref.json's full ids (COLI_LOOKUP_FORCE) */
 
@@ -4794,6 +4879,11 @@ static int q36_spec_force_mode(const char *v, int *row) {
 
 static void q36_spec_begin(Model *m, Q36Spec *sp, const int *prompt, int np) {
     memset(sp, 0, sizeof *sp);
+#ifdef COLI_STRATA_NATIVE
+    sp->heads = g_sn_bank != NULL;
+    g_sn_valid = 0; /* A new/pinned conversation never borrows another frontier. */
+    g_sn_generation++; g_sn_trace_active = 1;
+#endif
     const char *e = getenv("COLI_LOOKUP");
     /* on by default, always gated (docs/speculative.md): COLI_LOOKUP=0 turns it off */
     int asked = e && *e == '1';
@@ -4824,7 +4914,7 @@ static void q36_spec_begin(Model *m, Q36Spec *sp, const int *prompt, int np) {
     }
 }
 
-static void q36_spec_free(Q36Spec *sp) { free(sp->hist); sp->hist = NULL; sp->hist_n = sp->hist_cap = 0; }
+static void q36_spec_free(Q36Spec *sp) { free(sp->hist); free(sp->ahead_hidden); sp->ahead_hidden=NULL; sp->hist = NULL; sp->hist_n = sp->hist_cap = 0; }
 
 /* Copy slots for a verify of up to rows+1 rows, allocated the first time they are
  * needed. 0 = out of memory (the caller takes a plain step). */
@@ -4862,8 +4952,9 @@ static void q36_spec_rollback(Model *m, int len, int keep) {
 
 static void q36_spec_settle(Model *m, Q36Spec *sp, int keep, int rejected) {
     if (keep < sp->ahead_n) q36_spec_rollback(m, sp->ahead_pos + keep, keep);
-    spec_gate_result(&sp->gate, SPEC_SRC_LOOKUP, keep - 1 + (rejected ? 1 : 0), keep - 1);
+    spec_gate_result(&sp->gate, sp->ahead_src, keep - 1 + (rejected ? 1 : 0), keep - 1);
     free(sp->ahead_logit); sp->ahead_logit = NULL; sp->ahead_n = sp->ahead_i = 0;
+    free(sp->ahead_hidden); sp->ahead_hidden = NULL;
 }
 
 /* The oracle's token at draft row j (1-based) of a verify at pos, or a wrong one at
@@ -4893,6 +4984,9 @@ static void q36_spec_hist_push(Q36Spec *sp, int tok, int pos) {
  * returned buffer is the caller's (it may hold more rows past the first vocab). */
 static float *q36_spec_step(Model *m, Q36Spec *sp, int tok, int pos, int more) {
     Cfg *c = &m->c; int V = c->vocab;
+#ifdef COLI_STRATA_NATIVE
+    q36_sn_trace_known(m,tok,pos);
+#endif
     sp->tokens++;
     q36_spec_hist_push(sp, tok, pos);
     if (sp->ahead_n) {
@@ -4900,6 +4994,12 @@ static float *q36_spec_step(Model *m, Q36Spec *sp, int tok, int pos, int more) {
         if (tok == sp->ids[i] && pos == sp->ahead_pos + i) {
             float *logit = falloc(V);
             memcpy(logit, sp->ahead_logit + (int64_t)(i - 1) * V, (size_t)V * sizeof(float));
+#ifdef COLI_STRATA_NATIVE
+            if (sp->ahead_hidden) {
+                memcpy(g_sn_frontier,sp->ahead_hidden+(size_t)(i-1)*g_sn_h,(size_t)g_sn_h*sizeof(float));
+                g_sn_valid=1; g_sn_pos=pos; g_sn_frontier_token=tok;
+            }
+#endif
             sp->accepted++;
             if (++sp->ahead_i == sp->ahead_n) q36_spec_settle(m, sp, sp->ahead_n, 0);
             return logit;
@@ -4910,14 +5010,31 @@ static float *q36_spec_step(Model *m, Q36Spec *sp, int tok, int pos, int more) {
     if (room > sp->lookup_max) room = sp->lookup_max;
     if (pos + room >= m->kv_cap) room = m->kv_cap - 1 - pos;
     int d[Q36_SPEC_ROWS], k = 0;
-    if (sp->lookup && room > 0) {
+    int src = SPEC_SRC_LOOKUP;
+#ifdef COLI_STRATA_NATIVE
+    if (sp->heads && room>0 && g_sn_valid && g_sn_pos==pos-1 && !m->vis_rows_n) {
+        int available=(int)g_sn_info.head_count;
+        if (available>room) available=room;
+        int wanted=spec_gate_pick(&sp->gate,SPEC_SRC_PARALLEL,available,NULL);
+        if (wanted>0) {
+            int predictions[SN_MAX_HEADS]; double start=now_s();
+            sn_status result=sn_predict(g_sn_bank,q36_sn_input(m,tok),predictions);
+            double elapsed=now_s()-start;
+            sp->bank_calls++; sp->bank_seconds+=elapsed;
+            spec_gate_draft_cost(&sp->gate,SPEC_SRC_PARALLEL,elapsed); /* one whole-bank cost */
+            if (result==SN_OK) { k=wanted; memcpy(d,predictions,(size_t)k*sizeof(int)); src=SPEC_SRC_PARALLEL; }
+            else sp->bank_failures++; /* target-only fallback, no partial proposals */
+        }
+    }
+#endif
+    if (!k && sp->lookup && room > 0) {
         int n = 0;
         if (sp->force)
             while (n < room) { int t = q36_spec_forced(sp, room, n + 1, pos, V); if (t < 0) break; d[n++] = t; }
         else n = spec_lookup(sp->hist, sp->hist_n, 2, 4, room, d);
         if (n > 0) k = spec_gate_pick(&sp->gate, SPEC_SRC_LOOKUP, n, NULL);
-        if (k > 0 && !q36_spec_alloc(m, k)) k = 0;
     }
+    if (k>0 && !q36_spec_alloc(m,k)) k=0;
     if (!k) {
         sp->forwards++;
         double t0 = now_s();
@@ -4926,14 +5043,33 @@ static float *q36_spec_step(Model *m, Q36Spec *sp, int tok, int pos, int more) {
         return logit;
     }
     int S = k + 1;
+#ifdef COLI_STRATA_NATIVE
+    if (g_sn_frontier) {
+        sp->ahead_hidden=(float*)malloc((size_t)k*g_sn_h*sizeof(float));
+        if (!sp->ahead_hidden) {
+            sp->forwards++; double start=now_s(); float *plain=step(m,&tok,1,pos);
+            spec_gate_forward(&sp->gate,1,now_s()-start); return plain;
+        }
+        g_sn_capture_rows=S;
+    }
+#endif
     sp->ids[0] = tok; memcpy(sp->ids + 1, d, (size_t)k * sizeof(int));
     m->snap_rows = k; g_q36_rowwise = 1;
     double t0 = now_s();
     float *logit = step_ex(m, sp->ids, S, pos, S);
+#ifdef COLI_STRATA_NATIVE
+    g_sn_capture_rows=0;
+    if (sp->ahead_hidden) {
+        memcpy(g_sn_frontier,g_sn_rows,(size_t)g_sn_h*sizeof(float));
+        memcpy(sp->ahead_hidden,g_sn_rows+g_sn_h,(size_t)k*g_sn_h*sizeof(float));
+        g_sn_valid=1; g_sn_pos=pos; g_sn_frontier_token=tok;
+    }
+#endif
     spec_gate_forward(&sp->gate, S, now_s() - t0);
     m->snap_rows = 0; g_q36_rowwise = 0;
     sp->forwards++; sp->drafts += (uint64_t)k; sp->verifies++;
     sp->ahead_n = S; sp->ahead_i = 1; sp->ahead_pos = pos;
+    sp->ahead_src=src;
     sp->ahead_logit = falloc((int64_t)k * V);
     memcpy(sp->ahead_logit, logit + V, (size_t)k * V * sizeof(float));
     return logit;
@@ -4943,9 +5079,25 @@ static float *q36_spec_step(Model *m, Q36Spec *sp, int tok, int pos, int more) {
  * state is the one plain decoding leaves after the same tokens. */
 static void q36_spec_end(Model *m, Q36Spec *sp) {
     if (sp->ahead_n) { sp->ended_ahead = 1; q36_spec_settle(m, sp, sp->ahead_i, 0); }
+#ifdef COLI_STRATA_NATIVE
+    g_sn_valid=0; g_sn_trace_active=0;
+#endif
 }
 
 static void q36_spec_report(const Q36Spec *sp, const char *scope) {
+    if (sp->heads) {
+        fprintf(stderr,"[qwen36 strata] %s: bank_calls=%llu bank_seconds=%.6f failures=%llu forwards=%llu tokens=%llu accepted=%llu drafts=%llu verifies=%llu ended_mid_verify=%d\n",
+                scope,(unsigned long long)sp->bank_calls,sp->bank_seconds,(unsigned long long)sp->bank_failures,
+                (unsigned long long)sp->forwards,(unsigned long long)sp->tokens,(unsigned long long)sp->accepted,
+                (unsigned long long)sp->drafts,(unsigned long long)sp->verifies,sp->ended_ahead);
+        char detail[512];
+        spec_gate_describe(&sp->gate,SPEC_SRC_PARALLEL,detail,sizeof detail);
+        fprintf(stderr,"[qwen36 parallel gate] %s: %s | judged/accepted by offset",scope,detail);
+        for(int j=0;j<SPEC_MAX_DRAFTS;j++)
+            if(sp->gate.prop[SPEC_SRC_PARALLEL][j])
+                fprintf(stderr," %d:%llu/%llu",j+2,(unsigned long long)sp->gate.prop[SPEC_SRC_PARALLEL][j],(unsigned long long)sp->gate.hit[SPEC_SRC_PARALLEL][j]);
+        fprintf(stderr," | declined=%llu probes=%llu\n",(unsigned long long)sp->gate.declined[SPEC_SRC_PARALLEL],(unsigned long long)sp->gate.probes[SPEC_SRC_PARALLEL]);
+    }
     if (!sp->lookup && !sp->verifies) return;
     if (!sp->gate.off) {
         char g[384];
@@ -5399,7 +5551,11 @@ static int q36_serve_start(Model *m, ServeReq *q, int **ids_out, int *np_out, fl
     g_pin_use_logit = 0;
     {
         int pinned = pin_restore(m, ids, np);
-        if (pinned) { reuse = pinned; g_pin_use_logit = 1; }
+        if (pinned) {
+            reuse = pinned; g_pin_use_logit = 1;
+            const char *pinlog=getenv("COLI_PREFIX_LOG");
+            if(pinlog && *pinlog && *pinlog!='0') fprintf(stderr,"[PIN] restoring %d prompt tokens\n",pinned);
+        }
     }
     g_echo_k = q->logprobs; g_echo_id = q->id;
     if (!reuse) { reset_recurrent(m); m->kv_len = 0; }
@@ -5433,6 +5589,7 @@ static void serve_one(Model *m, ServeReq *q){
     double t0=clk.t0;
     unsigned char sbuf[16]; int sbn=0;
     Q36Spec spec; q36_spec_begin(m, &spec, ids, np);   /* COLI_LOOKUP=1: drafts, every token still sampled from the exact logits */
+    if (q->temp>0) spec.heads=0; /* sampled head/RNG contract is not qualified yet */
     for(int s=0;s<q->max_tok;s++){
         int tk = serve_sample(lo, m->c.vocab, q->temp, q->top_p);
         /* La coda si calcola PRIMA della free: dopo, lo non c'e piu. */
@@ -5454,7 +5611,9 @@ static void serve_one(Model *m, ServeReq *q){
          * turno che nessuno vuole piu'. */
         if(serve_cancel_pending(q->id)){
             free(lo); lo=NULL;
-            q36_spec_end(m, &spec); q36_spec_free(&spec);   /* the state of the tokens fed, drafts undone */
+            q36_spec_end(m, &spec);
+            {char scope[96]; snprintf(scope,sizeof scope,"turn %s cancelled",q->id); q36_spec_report(&spec,scope);}
+            q36_spec_free(&spec);   /* the state of the tokens fed, drafts undone */
             if(sbn>0) serve_data(q->id,(char*)sbuf,sbn);
             printf("ERROR %s CANCELLED\n",q->id); fflush(stdout);
             free(ids);
@@ -6601,6 +6760,13 @@ int main(int argc, char **argv) {
     /* coli serve mode: speak the gateway wire protocol instead of argv
      * generation. AFTER the tier init: serve sessions ride the VRAM experts
      * exactly like argv runs, and serve_loop never returns. */
+#ifdef COLI_STRATA_NATIVE
+    q36_sn_init(&m,snap,bits);
+#else
+    if (getenv("COLI_STRATA_HEADS") || getenv("COLI_STRATA_TRACE")) {
+        fprintf(stderr,"[strata] this engine was built without native head support\n"); return 1;
+    }
+#endif
     if (getenv("CLEF_RECORDS") || getenv("CLEF_TOKENIZE")) {
         if (!g_tok) { fprintf(stderr, "[clef] tokenizer.json required\n"); return 1; }
         return q36_clef_test_modes(&m);

@@ -1,0 +1,30 @@
+{
+  "phase": "native-throughput",
+  "active": true,
+  "status": "in_progress",
+  "objective": "measurably faster native Colibri inference across all model families and qualified hardware",
+  "first_family": "qwen36 native Qwen3.5-0.8B; OLMoE real model prepared for following slice",
+  "runtime": "native-in-session",
+  "owners": {
+    "/root": "native adapter, trace capture, real training, benchmark, CLI and publication",
+    "/root/memory_primitives": "CPU kernels completed; benchmark driver robustness and tied converter tests active",
+    "/root/parallel_heads": "CSNH completed; normalized two-head training and pretrained output transfer prototype active",
+    "/root/architecture": "active-bank frontier/cancel/prefix regression harness and independent review"
+  },
+  "baseline": "outputs-native/qwen36-baseline from unchanged source, same compiler and real native container",
+  "checkpoint": "Qwen/Qwen3.5-0.8B@2fc06364715b967f1860aea9cf38778875588b17",
+  "initial_head_result": "2232 captured real rows; rank8 offset2 trained400steps; heldout3prompts*5pairs exact IDs/LP; decode medianratio0.975 (no speedup)",
+  "current_training": "rank16 two-head bank complete; heldout .129/.0797,fullprefix .0323; native comparison no clear gain; low-rank pretrained projection rejected by diagnostic ceiling",
+  "qualification": "native pack scalar/AVX2/OpenMP and4/8/16 byte/ref plus kernel sanitizer passed; FIFO refusal and frontier/EOS/cancel/prefix gates passed;32Python+4Cfocused tests passed;6tiedconverter tests passed; independentCPUadapterreview approved",
+  "regular_colibri_comparison": "15interleavedpairedruns,stockpromptlookupenabledbotharms;regularmedian39.829,fork39.471tok/s;pairedmedianratio1.01455,8wins7losses;IDs/LP/outputsidentical;noclearrepeatablespeedup",
+  "strata_comparison": "notrunlocally:unsupportedIntelUHDpathandunsupported0.8Bcheckpoint;officialRTX5070Q2_0FlashNextpublished93.0at4K,73.7at128Kareseparatereferences",
+  "pending": [
+    "heldout head accuracy",
+    "isolated native paired speedup",
+    "all other native family adapters",
+    "native GPU DMA/residency",
+    "model-native INT8 KV",
+    "physical NPU/TPU/AIPU full-model qualification"
+  ],
+  "complete": false
+}

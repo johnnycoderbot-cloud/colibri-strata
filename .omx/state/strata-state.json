@@ -5,20 +5,59 @@
   "detached_team_active": false,
   "scope": "GitHub fork bootstrap and tested portable all-family interfaces",
   "tasks": [
-    {"id": "source-map", "owner": "/root/architecture", "role": "explorer", "status": "approved", "handoff": "docs/strata-fork.md and .omx/research/summary.md"},
-    {"id": "parallel-heads", "owner": "/root/parallel_heads", "role": "worker", "status": "approved", "handoff": "c/strata_heads.h; scalar/OpenMP/ASan/UBSan tests pass"},
-    {"id": "memory-primitives", "owner": "/root/memory_primitives", "role": "worker", "status": "approved", "handoff": "c/strata_memory.h; strict C99 and sanitizer tests pass"},
-    {"id": "trainer-and-build", "owner": "/root", "role": "executor", "status": "approved", "handoff": "8 Python tests including training; generated C head prediction parity passed"},
-    {"id": "publish-fork", "owner": "/root", "role": "operator", "status": "approved", "handoff": "Public fork published at e910c19; focused CI run 38101880229 passed both jobs; roadmap issues 1..5 created"}
+    {
+      "id": "source-map",
+      "owner": "/root/architecture",
+      "role": "explorer",
+      "status": "approved",
+      "handoff": "docs/strata-fork.md and .omx/research/summary.md"
+    },
+    {
+      "id": "parallel-heads",
+      "owner": "/root/parallel_heads",
+      "role": "worker",
+      "status": "approved",
+      "handoff": "c/strata_heads.h; scalar/OpenMP/ASan/UBSan tests pass"
+    },
+    {
+      "id": "memory-primitives",
+      "owner": "/root/memory_primitives",
+      "role": "worker",
+      "status": "approved",
+      "handoff": "c/strata_memory.h; strict C99 and sanitizer tests pass"
+    },
+    {
+      "id": "trainer-and-build",
+      "owner": "/root",
+      "role": "executor",
+      "status": "approved",
+      "handoff": "8 Python tests including training; generated C head prediction parity passed"
+    },
+    {
+      "id": "publish-fork",
+      "owner": "/root",
+      "role": "operator",
+      "status": "approved",
+      "handoff": "Public fork published at e910c19; focused CI run 38101880229 passed both jobs; roadmap issues 1..5 created"
+    }
   ],
-  "review": {"owner": "/root/architecture", "verdict": "approved", "scope": "documented experimental core only"},
+  "review": {
+    "owner": "/root/architecture",
+    "verdict": "approved",
+    "scope": "documented experimental core only"
+  },
   "bootstrap_status": "complete",
   "github_repository": "https://github.com/johnnycoderbot-cloud/colibri-strata",
   "verified_code_commit": "e910c19acb1f6be251e26bd9790b36858e78e4d4",
-  "focused_ci": {"run_id": 38101880229, "portable": "success", "offline_training": "success"},
+  "focused_ci": {
+    "run_id": 38101880229,
+    "portable": "success",
+    "offline_training": "success"
+  },
   "production_engine_adapters": "pending",
   "real_model_head_quality": "pending",
   "cuda_hip_transfer_integration": "pending",
   "model_kv_int8_integration": "pending",
-  "real_model_performance": "unmeasured"
+  "real_model_performance": "unmeasured",
+  "active": false
 }

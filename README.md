@@ -4,10 +4,12 @@ A fork of [JustVugg/colibri](https://github.com/JustVugg/colibri) pursuing
 **independent parallel future-token heads** and Strata-inspired memory scheduling
 across every Colibri text-generation family.
 
-**Current status: experimental portable core, offline trainer, and integration
-contracts. The new primitives are not yet connected to the production inference
-loops.** Existing Colibri engines run as upstream. This fork does not promise
-200 tokens/s, new trained model weights, or accelerated decoding across all families.
+**Current status: experimental live parallel heads in the native qwen36 CPU
+decoder; other-family/device adapters remain pending.** Real-checkpoint rollback
+tests pass, but the current trained bank has **no clear repeatable speedup**:
+regular Colibri 39.829 vs the fork 39.471 median tokens/s in the same CPU test.
+[Measured comparison and limits](experimental/strata/results/native-cpu-comparison.json).
+This fork does not promise 200 tokens/s or accelerated decoding across all families.
 
 Included now:
 
@@ -22,6 +24,10 @@ Included now:
   CUDA/HIP transfers, model KV layouts and actual residency need backend adapters.
 - Offline training and C weight export from checkpoint-identified hidden traces.
   Trained heads are specific to a checkpoint, tokenizer, quantization and hidden tap.
+- Native CSNH bank loading, real target trace capture, causal batched verification
+  and accepted-state retention for qualified qwen36 CPU greedy requests. Exact
+  batched CPU readout and distinct-expert MoE chunks; real paired benchmark tool.
+  See [native parallel heads](docs/native-parallel-heads.md) for setup and evidence.
 - Optional ONNX GPU/NPU and JAX GPU/TPU standalone head runners with explicit device
   refusal and profiling; physical Intel GPU, AIPU vendor-artifact and NVMe checks.
   See the [precision/hardware matrix](docs/precision-hardware.md) for exact limits.
@@ -39,6 +45,7 @@ make -C c strata-check          # C behavior tests + trace/pack checks
 make -C c strata-sanitize       # Linux GCC/Clang ASan + UBSan
 make -C c strata-bench          # synthetic head timing, not model tokens/s
 make -C c strata-fuzz           # bounded malformed-data and failure campaign
+make -C c strata-native-check   # native bank, CPU kernels, identity/protocol tests
 ```
 
 [Architecture and family coverage](docs/strata-fork.md) ·

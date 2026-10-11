@@ -7,8 +7,10 @@ the C primitives and trace/pack validators are dependency-free.
 An engine adapter must first capture a named immutable hidden vector at position t
 and record actual future tokens from the **same tokenized sequence**. Do not cross
 documents, samples, EOS or padding. Missing future positions are `null`, never a
-token from the next training sample. Real-engine trace capture is on the roadmap;
-the format does not substitute for a validated hidden-state tap.
+token from the next training sample. The first qualified
+[real-engine trace capture](../../docs/native-parallel-heads.md) is implemented
+for qwen36 CPU; other families remain on the roadmap. The format alone does not
+substitute for a validated hidden-state tap.
 
 First line of the UTF-8 JSONL trace:
 
@@ -57,8 +59,11 @@ acceptance. Training loss alone is not validation. Save a disjoint held-out corp
 conditional acceptance at every offset and end-to-end bank/verify cost. Exported
 packs mark `quality_validated: false`; changing that flag cannot certify a pack.
 
-Future learned heads, prefetch buffers, hot-expert policy and INT8 KV are currently
-experimental interfaces; `coli chat` has no new feature switch for them.
+Future learned heads now have an experimental `--parallel-heads CSNH` switch for
+qualified qwen36 CPU. The CSNH runtime loader binds actual native bytes/mode/tap;
+it is separate from the trusted C exporter above. Prefetch buffers, hot-expert
+policy and INT8 KV still need native device integration. Current learned-head
+timing shows no clear repeatable speedup; see the measured comparison.
 
 The C exporter now supports `--weight-bits 4`, `8` or `16`. These are signed integer
 storage formats, with FP32 activation/reference computation. See

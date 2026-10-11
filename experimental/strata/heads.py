@@ -50,8 +50,13 @@ def identity(meta):
                 and len(meta[key]) <= 1024 and "\0" not in meta[key], f"invalid {key}")
     positive_int(meta.get("hidden_size"), "hidden_size", 32768)
     positive_int(meta.get("vocab_size"), "vocab_size", 1048576)
-    return {key: meta[key] for key in ("family", "checkpoint_revision", "tokenizer_sha256",
+    result = {key: meta[key] for key in ("family", "checkpoint_revision", "tokenizer_sha256",
                                       "hidden_tap", "quantization", "hidden_size", "vocab_size")}
+    if "native_fingerprint" in meta:
+        require(isinstance(meta["native_fingerprint"],str) and
+                re.fullmatch(r"[0-9a-f]{64}",meta["native_fingerprint"]), "invalid native target fingerprint")
+        result["native_fingerprint"] = meta["native_fingerprint"]
+    return result
 
 
 def load_trace(path, offsets):
@@ -89,7 +94,36 @@ def load_trace(path, offsets):
     return meta, hidden, targets
 
 
-def train(path, offsets, rank, steps, batch_size, learning_rate, seed):
+def _feature_scale(x):
+    """Fixed training-only RMS scaling, folded into down weights on export.
+
+    Double statistics avoid overflow from finite F32 outliers. A zero/tiny
+    coordinate uses the floor rather than amplifying noise without a bound.
+    No centering or per-example normalization is needed by the native runner.
+    """
+    import torch
+    rms = x.to(torch.float64).square().mean(dim=0).sqrt()
+    scale = torch.where(rms >= 1e-8, rms.clamp_min(1e-8).reciprocal(), torch.ones_like(rms)).to(torch.float32)
+    require(bool(torch.all(torch.isfinite(scale))), "nonfinite feature scale")
+    return scale
+
+
+def _shuffled_batches(size, batch_size, generator):
+    import torch
+    order, cursor = torch.randperm(size, generator=generator), 0
+    while True:
+        pieces, remaining = [], batch_size
+        while remaining:
+            take = min(remaining, size - cursor)
+            pieces.append(order[cursor:cursor + take])
+            cursor += take
+            remaining -= take
+            if cursor == size:
+                order, cursor = torch.randperm(size, generator=generator), 0
+        yield torch.cat(pieces)
+
+
+def train(path, offsets, rank, steps, batch_size, learning_rate, seed, *, progress=None):
     positive_int(rank, "rank", 1024)
     positive_int(steps, "steps", 100000)
     positive_int(batch_size, "batch_size", 4096)
@@ -103,19 +137,35 @@ def train(path, offsets, rank, steps, batch_size, learning_rate, seed):
     require(count * batch_size * vocab <= MAX_FLOATS,
             "training logits exceed float limit; reduce batch size")
     import torch
-    torch.manual_seed(seed)
     torch.set_num_threads(1)
+    generator = torch.Generator().manual_seed(seed)
     x = torch.tensor(h, dtype=torch.float32)
+    scale = _feature_scale(x)
+    x *= scale
+    require(bool(torch.all(torch.isfinite(x))), "nonfinite normalized feature")
     y = torch.tensor(labels, dtype=torch.long).T.contiguous()
-    down = torch.nn.Parameter(torch.randn(count, rank, width) / math.sqrt(width))
-    up = torch.nn.Parameter(torch.randn(count, vocab, rank) * 0.01)
-    bias = torch.nn.Parameter(torch.zeros(count, vocab))
-    optimizer = torch.optim.Adam((down, up, bias), lr=learning_rate)
+    down = torch.nn.Parameter(torch.randn(count, rank, width, generator=generator) / math.sqrt(width))
+    up = torch.nn.Parameter(torch.randn(count, vocab, rank, generator=generator) * 0.01)
+    # A unit total pseudocount avoids spending most updates suppressing the
+    # hundreds of thousands of classes absent from a small trace. Counts and
+    # feature statistics are derived only from the supplied training rows.
+    priors = torch.stack([torch.bincount(row[row >= 0], minlength=vocab).float() + 1. / vocab for row in y])
+    bias = torch.nn.Parameter(priors.log())
+    optimizer = torch.optim.AdamW([{"params": [down], "lr": learning_rate * 0.1},
+                                   {"params": [up, bias], "lr": learning_rate}], weight_decay=0.01)
+    warmup_steps = min(100, max(1, steps // 10))
+    batches = _shuffled_batches(len(x), batch_size, generator)
     losses = []
     for step in range(steps):
-        # Deterministic cyclic minibatches. Every offset reads the SAME x; no
+        # Seeded epoch shuffles prevent adjacent-session minibatches from
+        # repeatedly overwriting the previous session's updates. Every offset
+        # still reads the SAME x; no
         # earlier head's prediction or hidden state feeds a later head.
-        indices = torch.arange(step * batch_size, (step + 1) * batch_size) % len(x)
+        indices = next(batches)
+        warmup = min(1., (step + 1) / warmup_steps)
+        decay = 0.1 + 0.9 * 0.5 * (1. + math.cos(math.pi * step / max(1, steps - 1)))
+        optimizer.param_groups[0]["lr"] = learning_rate * 0.1 * warmup * decay
+        optimizer.param_groups[1]["lr"] = learning_rate * warmup * decay
         latent = torch.einsum("bh,krh->kbr", x[indices], down)
         logits = torch.einsum("kbr,kvr->kbv", latent, up) + bias[:, None, :]
         selected = y[:, indices]
@@ -127,11 +177,16 @@ def train(path, offsets, rank, steps, batch_size, learning_rate, seed):
         require(bool(torch.isfinite(loss)), "training produced nonfinite loss")
         optimizer.zero_grad()
         loss.backward()
+        norm = torch.nn.utils.clip_grad_norm_((down, up, bias), 1.)
+        require(bool(torch.isfinite(norm)), "training produced nonfinite gradient")
         optimizer.step()
         losses.append(float(loss.detach()))
+        if progress is not None and (step == 0 or (step + 1) % 100 == 0 or step + 1 == steps):
+            progress({"step": step + 1, "loss": losses[-1], "gradient_norm": float(norm),
+                      "learning_rate": optimizer.param_groups[1]["lr"]})
     require(losses, "no trainable minibatch")
     heads = [{"future_offset": offset, "rank": rank,
-              "down": down[k].detach().flatten().tolist(),
+              "down": (down[k].detach() * scale).flatten().tolist(),
               "up": up[k].detach().flatten().tolist(),
               "bias": bias[k].detach().tolist()} for k, offset in enumerate(offsets)]
     require(all(math.isfinite(v) for head in heads for key in ("down", "up", "bias") for v in head[key]),
@@ -140,7 +195,12 @@ def train(path, offsets, rank, steps, batch_size, learning_rate, seed):
             "training": {"trace_sha256": hashlib.sha256(Path(path).read_bytes()).hexdigest(),
                          "seed": seed, "steps": steps, "batch_size": batch_size,
                          "learning_rate": learning_rate, "first_loss": losses[0],
-                         "last_loss": losses[-1], "quality_validated": False}}
+                         "last_loss": losses[-1], "quality_validated": False,
+                         "feature_normalization": "coordinate-rms-folded-into-down/v1",
+                         "feature_scale_min": float(scale.min()), "feature_scale_max": float(scale.max()),
+                         "optimizer": "AdamW", "weight_decay": 0.01, "gradient_clip_norm": 1.,
+                         "down_learning_rate_multiplier": 0.1, "warmup_steps": warmup_steps,
+                         "schedule": "cosine-to-0.1", "minibatches": "seeded-epoch-shuffle"}}
 
 
 def validate_pack(pack, expected_identity=None):

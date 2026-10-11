@@ -1319,8 +1319,20 @@ qpack.o: qpack.c .build-config
 	$(CC) $(QWEN36_CFLAGS) -c qpack.c -o $@
 # Rebuild when CUDA_DLL changes; otherwise an existing CPU-only executable can
 # be reported as up to date despite selecting the Windows CUDA DLL tier.
-qwen36$(EXE): qwen36.c $(QWEN36_TIER_OBJ) $(QWEN36_QPACK_OBJ) $(CUDA_OBJ) $(METAL_OBJ) $(VK_OBJ) $(VK_SPV) .build-config
-	$(CC) $(QWEN36_CFLAGS) qwen36.c $(QWEN36_TIER_OBJ) $(QWEN36_QPACK_OBJ) $(CUDA_OBJ) $(METAL_OBJ) $(VK_OBJ) -o qwen36$(EXE) $(QWEN36_LDFLAGS)
+strata_native_heads.o: strata_native_heads.c .build-config
+	$(CC) $(CFLAGS) -fno-fast-math -c $< -o $@
+
+tests/test_strata_native_heads$(EXE): tests/test_strata_native_heads.c strata_native_heads.o
+	$(CC) $(CFLAGS) -fno-fast-math $< strata_native_heads.o -o $@ $(LDFLAGS)
+
+tests/test_qwen36_head_batch$(EXE): tests/test_qwen36_head_batch.c
+	$(CC) $(NOCUDA_CFLAGS) $< -o $@ $(NOCUDA_LDFLAGS)
+
+tests/test_qwen36_expert_chunks$(EXE): tests/test_qwen36_expert_chunks.c
+	$(CC) $(NOCUDA_CFLAGS) $< -o $@ $(NOCUDA_LDFLAGS)
+
+qwen36$(EXE): qwen36.c strata_native_heads.o $(QWEN36_TIER_OBJ) $(QWEN36_QPACK_OBJ) $(CUDA_OBJ) $(METAL_OBJ) $(VK_OBJ) $(VK_SPV) .build-config
+	$(CC) $(QWEN36_CFLAGS) -DCOLI_STRATA_NATIVE qwen36.c strata_native_heads.o $(QWEN36_TIER_OBJ) $(QWEN36_QPACK_OBJ) $(CUDA_OBJ) $(METAL_OBJ) $(VK_OBJ) -o qwen36$(EXE) $(QWEN36_LDFLAGS)
 
 # Qwen-Image-2.1 text-to-image (docs/qwen-image.md). It reads the diffusers
 # checkpoint as it is: no conversion step. qi_gemm.h is its one matrix kernel.
@@ -3089,6 +3101,29 @@ strata-runtime-check:
 	$(PYTHON) -c "import numpy, onnx, onnxruntime, jax, openvino; print(onnxruntime.get_available_providers()); print(openvino.Core().available_devices)"
 	$(PYTHON) -m unittest discover -s ../experimental/strata -p test_runtime.py -v
 
+# Bounded native adapter tests; the real-model frontier harness is an explicit
+# operator run against a pinned checkpoint, not a synthetic throughput claim.
+strata-native-check: tests/test_strata_native_heads$(EXE) tests/test_qwen36_head_batch$(EXE) tests/test_qwen36_expert_chunks$(EXE) tests/test_spec_draft$(EXE)
+	./tests/test_strata_native_heads$(EXE)
+	./tests/test_qwen36_head_batch$(EXE)
+	./tests/test_qwen36_expert_chunks$(EXE)
+	./tests/test_spec_draft$(EXE)
+	$(PYTHON) -m unittest discover -s tests -p test_export_native_heads.py -v
+	$(PYTHON) -m unittest discover -s tests -p test_native_decode_bench.py -v
+	$(PYTHON) -m unittest discover -s tests -p test_capture_native_heads.py -v
+	$(PYTHON) -m unittest discover -s tests -p test_parallel_heads_cli.py -v
+
+strata-native-sanitize:
+	$(CC) $(STRATA_CHECK_CFLAGS) -O1 -g -fopenmp -fsanitize=address,undefined -fno-omit-frame-pointer -c strata_native_heads.c -o tests/strata_native_heads_sanitize.o
+	$(CC) $(STRATA_CHECK_CFLAGS) -O1 -g -fopenmp -fsanitize=address,undefined -fno-omit-frame-pointer tests/test_strata_native_heads.c tests/strata_native_heads_sanitize.o -lm -o tests/test_strata_native_heads_sanitize$(EXE)
+	$(ASAN_ENV) ./tests/test_strata_native_heads_sanitize$(EXE)
+	$(CC) $(NOCUDA_CFLAGS) $(ASAN_CFLAGS) tests/test_qwen36_head_batch.c -o tests/test_qwen36_head_batch_sanitize$(EXE) $(NOCUDA_LDFLAGS) $(ASAN_LDFLAGS)
+	$(ASAN_ENV) ./tests/test_qwen36_head_batch_sanitize$(EXE)
+	$(CC) $(NOCUDA_CFLAGS) $(ASAN_CFLAGS) tests/test_qwen36_expert_chunks.c -o tests/test_qwen36_expert_chunks_sanitize$(EXE) $(NOCUDA_LDFLAGS) $(ASAN_LDFLAGS)
+	$(ASAN_ENV) ./tests/test_qwen36_expert_chunks_sanitize$(EXE)
+
+.PHONY: strata-native-check strata-native-sanitize
+
 AUTODEP_ELSEWHERE = test_segment_adapters_registration test_segment_adapters_real \
 	test_edge_adapters_registration test_edge_adapters_real test_deepseek_v4 \
 	test_v4_serve_framing
@@ -3096,7 +3131,7 @@ AUTODEP_OWN_FLAGS = bench_cuda_resident_batch bench_load_tq_peak_rss \
 	bench_indexer_allocations
 ENGINE_RULES := $(foreach n,$(RULE_NAMES),$(if $(findstring /,$(n)),,$(if $(wildcard $(n).c),$(n))))
 AUTODEP_TESTS := $(patsubst tests/%,%,$(filter tests/%,$(RULE_NAMES)))
-AUTODEP_OBJS      = backend_vulkan.o vk_tier.o backend_loader.o backend_xdna.o qwen36_tier.o \
+AUTODEP_OBJS      = backend_vulkan.o vk_tier.o backend_loader.o backend_xdna.o qwen36_tier.o strata_native_heads.o \
 	tests/backend_xdna_lane.o tests/edge_runtime.o tests/edge_runtime_nocuda.o \
 	tests/segment_runtime.o tests/segment_runtime_nocuda.o \
 	tests/segment_conformance_fixtures.o tests/deepseek_v4_native_quant.o \

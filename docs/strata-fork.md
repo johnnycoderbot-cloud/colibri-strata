@@ -44,7 +44,7 @@ without the target model's decision.
 |---|---|---|---|
 | `glm`: GLM-5.2/5.3 | MTP/lookup/grammar/corpus; batch verify | Readout hidden tap, head identity, KV/prefix rewind | Pending |
 | `qwen38`: Qwen3.8-Flash-Next | MTP and lookup; six-row verify | DeltaNet, convolution, PLE history, device mirrors | Pending |
-| `qwen36`: Qwen3.6, Qwen3-Coder, dense Qwen3.8-27B | Lookup; six-row verify under supported backends | Hidden tap plus hybrid recurrence/conv snapshots; preserve backend guards | Pending |
+| `qwen36`: Qwen3.5/3.6, Qwen3-Coder, dense Qwen3.8-27B | Lookup; six-row verify under supported backends | Native CPU hidden frontier and recurrent/conv rollback wired; first real 0.8B qualification | Experimental CPU; throughput pending |
 | `deepseek_v4`: V4 Flash | Lookup/Markov/DSpark with opt-in batch verify | Compressed attention/window state, snapshots and replay cost | Pending |
 | `deepseek_v41`: V4.1 Flash | DSpark and batched verify | Window/compression undo and DSpark source selection | Pending |
 | `glm53`: GLM-5.3-Flash | Prefill/all-row logits; no live verifier found | KDA/conv per-row undo, hidden tap and new verifier | Pending |
@@ -107,6 +107,9 @@ with existing mechanisms instead of introducing conflicting default policies.
    a lookahead miss must follow the ordinary demand path. Real CUDA/HIP callbacks
    and event/transfer profiling are pending.
 
-No new environment flag turns these primitives on in `coli chat` yet. Tests cover
-the portable core and a toy causal model; they do not establish real-model parity,
-acceptance rate, quality or faster decoding.
+The memory primitives still need engine/device integration. The first
+[native parallel-head adapter](native-parallel-heads.md) is now wired into
+`qwen36` CPU with explicit identity and numerical-mode guards; use
+`--parallel-heads` with a trained matching CSNH bank. All-family integration and
+positive real-model throughput remain pending. Portable component tests and
+controlled correctness proposals do not establish learned acceptance or speed.

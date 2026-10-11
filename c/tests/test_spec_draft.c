@@ -131,6 +131,14 @@ static void test_gate(void) {
 int main(void) {
     test_lookup();
     test_gate();
+    {
+        SpecGate g; spec_gate_init(&g,0);
+        spec_gate_forward(&g,1,0.1); spec_gate_forward(&g,2,0.15); spec_gate_forward(&g,4,0.22);
+        spec_gate_draft_cost(&g,SPEC_SRC_PARALLEL,0.02);
+        for (int j=0;j<SPEC_MAX_DRAFTS;j++) g.acc[SPEC_SRC_PARALLEL][j]=1;
+        CHECK(fabs(spec_gate_value(&g,SPEC_SRC_PARALLEL,1,NULL)-2.0/1.7)<1e-12,"parallel first proposal pays one bank");
+        CHECK(fabs(spec_gate_value(&g,SPEC_SRC_PARALLEL,3,NULL)-4.0/2.4)<1e-12,"parallel depth pays bank once");
+    }
     if (fails) { printf("test_spec_draft: %d failure(s)\n", fails); return 1; }
     printf("test_spec_draft: prompt lookup and the gate behave as spec_draft.h says\n");
     return 0;
