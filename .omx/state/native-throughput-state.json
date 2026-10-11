@@ -65,7 +65,8 @@
     "implemented": true,
     "runtime_location": "Official MAX26.6.0/Mojo1.1.0 SDK in isolated local WSL; native C backend implemented. User custom accelerator plugins/project remain unidentified.",
     "documentation": "docs/modular-mojo.md",
-    "implementation_scope": "Compatible exported tensor graphs and external safetensor weights; not automatic existing-model or state/SSD scheduler integration."
+    "implementation_scope": "Compatible exported tensor graphs and external safetensor weights; not automatic existing-model or state/SSD scheduler integration.",
+    "intended_role": "Colibri C core owns state; Mojo maps/dispatches compatible native MAX, OpenVINO, Vulkan and device-specific NPU/TPU/AIPU adapters. Published MAX graph bridge is one adapter."
   },
   "adaptability": {
     "policy": "c/runtime_map.h/.c",
@@ -83,7 +84,19 @@
       "image/video",
       "encoder/embedding workloads",
       "other stateful models with compatible adapters"
-    ]
+    ],
+    "freetoken_investigation": {
+      "status": "source_review_complete",
+      "source_commit": "74a387777708b9650a027494bcb37d2ab9cf2443",
+      "artifact": ".omx/research/freetoken-distribution.md",
+      "mechanisms": [
+        "concurrent bandwidth-adaptive CPU/GPU missing-expert partitions and merge",
+        "tensor-parallel rank/size plus native collectives",
+        "phase-specific residency/prefill/state reuse"
+      ],
+      "implementation_status": "not ported; current mapper selects one target",
+      "benchmark_status": "not run"
+    }
   },
   "mojo_backend": {
     "status": "published",

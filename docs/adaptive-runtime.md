@@ -48,6 +48,7 @@ is not yet wired into the existing CLI AUTO selector or a Mojo device driver.
 | Strata-style sequential MTP and target verification | Amortize target passes while preserving accepted state, EOS, budgets and rollback. Existing qualified qwen36 CPU path remains available. |
 | Double-buffered prefetch and persistent hot experts | Overlap eligible weight transfers with compute; measure misses and waits and retain consumer/transfer fences. |
 | Chunked prefill and phase-specific placement | Use large arithmetic-friendly batches for prefill, then minimize state/weight movement during decode. |
+| FreeToken-style concurrent expert execution | Split missing experts between compatible compute/transfer branches using achieved bandwidth under contention; explicitly join outputs and preserve state ownership. |
 | Paged KV and prefix reuse | Reuse compatible immutable prompt state and account for growing cache memory; recurrent/SSM state needs its own layout. |
 | Continuous batching and backpressure | Admit work within memory and latency budgets; keep conversation/state ownership isolated. |
 | Fused kernels, prepared activations and graph capture | Reduce memory traffic and launch overhead for supported stable shapes. |
@@ -55,7 +56,11 @@ is not yet wired into the existing CLI AUTO selector or a Mojo device driver.
 | Encoder/feature reuse | Cache compatible text/image/audio encoder results with exact model and input identity. |
 
 These are selected integration requirements, not claims that every practice is
-already implemented. [vLLM prefix caching](https://docs.vllm.ai/en/latest/features/automatic_prefix_caching/)
+already implemented. [FreeToken distribution investigation](../.omx/research/freetoken-distribution.md)
+distinguishes its concurrent CPU/GPU expert split from tensor-parallel rank
+metadata. Our current mapper chooses one target; partition/execute/join is a
+separate required extension.
+[vLLM prefix caching](https://docs.vllm.ai/en/latest/features/automatic_prefix_caching/)
 avoids repeated shared-prefix prefill; it does not by itself speed generation of
 new tokens. [vLLM Ascend's layer/sparse offload design](https://docs.vllm.ai/projects/ascend/en/latest/developer_guide/Design_Documents/layerwise_and_sparse_kv_cache_offloading.html)
 illustrates why prefill and decode need different state-transfer strategies and
