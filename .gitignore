@@ -23,6 +23,10 @@ c/native_graph.exe
 c/mojo_runtime
 c/mojo_runtime.exe
 c/mojo_runtime.sdk/
+c/libcoli_mojo_dispatch.so
+c/libcoli_mojo_dispatch.dylib
+c/libcoli_mojo_dispatch.so.sdk/
+c/libcoli_mojo_dispatch.dylib.sdk/
 c/native_graph*.d
 c/native_media.d
 c/glm

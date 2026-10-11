@@ -395,7 +395,7 @@ static struct {
      * a 3rd matmul set + norm set, GPU-only latent intermediates, per-layer resident
      * norm-weight buffers (tiny, uploaded once like the KV mirror). */
     VkShaderModule shader_nrm; VkDescriptorSetLayout dsl_nrm; VkPipelineLayout plyt_nrm;
-    VkPipeline pipe_nrm; VkDescriptorPool qprep_pool; VkDescriptorSet dset_qp3, dset_nrm;
+    VkPipeline pipe_nrm; VkDescriptorPool qprep_pool, dpool_nrm; VkDescriptorSet dset_qp3, dset_nrm;
     Scratch qp1, qp2;
     VkBuffer lnbuf[VK_KV_LAYERS]; VkDeviceMemory lnmem[VK_KV_LAYERS]; int lnlen[VK_KV_LAYERS];
     Scratch att_sc;              /* attention score scratch (GPU-only) */
@@ -1327,8 +1327,8 @@ int coli_vk_init(const char *spv_path) {
     char nrm_path[512]; derive_dir_file(spv_path, "rmsnorm.spv", nrm_path, sizeof(nrm_path));
     G.shader_nrm = load_spv(G.dev, nrm_path);
     if (G.shader_nrm) {
-        VkDescriptorPool np; VkDescriptorSet ns;
-        if (!build_pipeline(G.dev, 3, sizeof(struct PCN), G.shader_nrm, &G.dsl_nrm, &G.plyt_nrm, &G.pipe_nrm, &np, &ns))
+        VkDescriptorSet ns;
+        if (!build_pipeline(G.dev, 3, sizeof(struct PCN), G.shader_nrm, &G.dsl_nrm, &G.plyt_nrm, &G.pipe_nrm, &G.dpool_nrm, &ns))
             return 0;
         G.dset_nrm = ns;
         /* one extra 4-binding matmul set for the chain's 3rd matmul (dset+dset_pair serve 1+2) */
@@ -5018,6 +5018,12 @@ void coli_vk_shutdown(void) {
         vkDestroyDescriptorSetLayout(G.dev, G.dsl_att, NULL);
         vkDestroyShaderModule(G.dev, G.shader_att, NULL);
     }
+    if (G.qprep_pool) vkDestroyDescriptorPool(G.dev, G.qprep_pool, NULL);
+    if (G.dpool_nrm) vkDestroyDescriptorPool(G.dev, G.dpool_nrm, NULL);
+    if (G.pipe_nrm) vkDestroyPipeline(G.dev, G.pipe_nrm, NULL);
+    if (G.plyt_nrm) vkDestroyPipelineLayout(G.dev, G.plyt_nrm, NULL);
+    if (G.dsl_nrm) vkDestroyDescriptorSetLayout(G.dev, G.dsl_nrm, NULL);
+    if (G.shader_nrm) vkDestroyShaderModule(G.dev, G.shader_nrm, NULL);
     g_async_inflight[0] = 0;   /* idle after vkDeviceWaitIdle: the deferred frees run now */
     tensor_reap(0);
     pthread_mutex_lock(&g_imports_mx);   /* imported rows: their memory objects go before the device */

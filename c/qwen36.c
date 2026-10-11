@@ -3581,7 +3581,9 @@ static void moe_vk_run(Model *m, Layer *l, int layer, const float *x, int S, flo
         for (int i = 0; i < n; i++) { want[i] = !taken[i]; if (taken[i]) ehit_mark(m, layer, ib[i]); }
         if (xf) moe_vk_xf_cpu(m, layer, xb, rows, ib, want, ctb);
         else    moe_vk_i8_cpu(m, layer, xb, rows, ib, want, ctb, g, u);
-        if (shb) { memset(shb, 0, (size_t)rows * D * sizeof(float)); qwen_shared_experts_cpu(m, l, xb, rows, shb, g, u, hh); }
+        int cpu_pairs=0;for(int i=0;i<n;i++)cpu_pairs+=ib[i]>=0 && !taken[i];
+        vkt_host_done(cpu_pairs);
+        if (shb) { memset(shb, 0, (size_t)rows * D * sizeof(float)); qwen_shared_experts_cpu(m, l, xb, rows, shb, g, u, hh); vkt_host_base_done(); }
         const float *dsum = NULL;   /* a step wholly on the device: its routed rows summed there */
         if (ndev && !vkt_join_sum(dev, vb, &dsum)) {   /* the batch failed (the tier stops): those pairs here */
             if (xf) moe_vk_xf_cpu(m, layer, xb, rows, ib, taken, ctb);

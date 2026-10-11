@@ -703,7 +703,7 @@ LDFLAGS  += -ldl
 endif
 # vk_tier.o: the routed-expert tier the MoE engines share (vk_tier.h); an engine
 # that does not call it links nothing from it.
-VK_OBJ    = backend_vulkan.o vk_tier.o
+VK_OBJ    = backend_vulkan.o vk_tier.o runtime_split.o mojo_split_loader.o
 VK_SPV    = shaders/qmatmul.spv shaders/qmatmul_gate_up.spv shaders/attention_absorb.spv shaders/rmsnorm.spv \
             shaders/qmatmul_gemm.spv shaders/qmatmul_coop.spv shaders/expert_act.spv \
             shaders/expert_act_v4.spv shaders/qmatmul_grp.spv shaders/qmatmul_grp_gate_up.spv shaders/expert_sum.spv shaders/qmatmul_grp_gemv.spv shaders/qmatmul_grp_gemv_gate_up.spv
@@ -879,6 +879,10 @@ backend_vulkan.o: backend_vulkan.c .build-config
 	$(CC) $(CFLAGS) -c backend_vulkan.c -o $@
 vk_tier.o: vk_tier.c .build-config
 	$(CC) $(CFLAGS) -c vk_tier.c -o $@
+runtime_split.o: runtime_split.c .build-config
+	$(CC) $(CFLAGS) -c $< -o $@
+mojo_split_loader.o: mojo_split_loader.c .build-config
+	$(CC) $(CFLAGS) -c $< -o $@
 # The expert batch's grouped GEMM (qmatmul_grp.comp): down, and gate+up+SwiGLU with
 # -DGATE_UP. Same glslc requirement and fallback as qmatmul_coop.spv; at run
 # time the batch keeps its per-expert route without them.
@@ -1341,6 +1345,14 @@ runtime-map-check: tests/test_runtime_map$(EXE)
 mojo-backend:
 	$(PYTHON) tools/build_native_mojo.py
 .PHONY: mojo-backend
+mojo-dispatch:
+	$(PYTHON) tools/build_mojo_dispatch.py
+.PHONY: mojo-dispatch
+tests/test_runtime_split$(EXE): tests/test_runtime_split.c runtime_split.o
+	$(CC) $(NOCUDA_CFLAGS) $< runtime_split.o -o $@ $(NOCUDA_LDFLAGS)
+runtime-split-check: tests/test_runtime_split$(EXE)
+	./tests/test_runtime_split$(EXE)
+.PHONY: runtime-split-check
 
 tests/test_native_media$(EXE): tests/test_native_media.c native_media.o
 	$(CC) $(NOCUDA_CFLAGS) $< native_media.o -o $@ $(NOCUDA_LDFLAGS)
@@ -3021,6 +3033,9 @@ install: colibri$(EXE) native_graph$(EXE) glm53$(EXE) inkling$(EXE) kimi_k3$(EXE
 	$(INSTALL) -m 644 native_graph.py $(DESTDIR)$(LIBEXECDIR)/
 	$(INSTALL) -m 644 mojo_cli.py $(DESTDIR)$(LIBEXECDIR)/
 	$(INSTALL) -m 644 native_mojo_backend.c native_mojo_backend.h mojo_runtime_main.c json.h $(DESTDIR)$(LIBEXECDIR)/
+	$(INSTALL) -m 644 runtime_split.c runtime_split.h mojo_split_loader.c mojo_split_loader.h mojo_split_dispatch.mojo $(DESTDIR)$(LIBEXECDIR)/
+	@if [ -f libcoli_mojo_dispatch.so ]; then $(INSTALL) -m 755 libcoli_mojo_dispatch.so $(DESTDIR)$(LIBEXECDIR)/; fi
+	@if [ -f libcoli_mojo_dispatch.dylib ]; then $(INSTALL) -m 755 libcoli_mojo_dispatch.dylib $(DESTDIR)$(LIBEXECDIR)/; fi
 	@if [ -f mojo_runtime$(EXE) ]; then $(INSTALL) -m 755 mojo_runtime$(EXE) $(DESTDIR)$(LIBEXECDIR)/mojo_runtime$(EXE); fi
 	@if [ -f mojo_runtime.sdk/modular.cfg ]; then $(INSTALL) -d $(DESTDIR)$(LIBEXECDIR)/mojo_runtime$(EXE).sdk; $(INSTALL) -m 644 mojo_runtime.sdk/modular.cfg $(DESTDIR)$(LIBEXECDIR)/mojo_runtime$(EXE).sdk/; fi
 	$(INSTALL) -m 755 native_graph$(EXE) $(DESTDIR)$(LIBEXECDIR)/native_graph$(EXE)
@@ -3224,7 +3239,7 @@ AUTODEP_OWN_FLAGS = bench_cuda_resident_batch bench_load_tq_peak_rss \
 	bench_indexer_allocations
 ENGINE_RULES := $(foreach n,$(RULE_NAMES),$(if $(findstring /,$(n)),,$(if $(wildcard $(n).c),$(n))))
 AUTODEP_TESTS := $(patsubst tests/%,%,$(filter tests/%,$(RULE_NAMES)))
-AUTODEP_OBJS      = runtime_map.o $(NATIVE_GRAPH_OBJECTS) backend_vulkan.o vk_tier.o backend_loader.o backend_xdna.o qwen36_tier.o strata_native_heads.o \
+AUTODEP_OBJS      = runtime_map.o runtime_split.o mojo_split_loader.o $(NATIVE_GRAPH_OBJECTS) backend_vulkan.o vk_tier.o backend_loader.o backend_xdna.o qwen36_tier.o strata_native_heads.o \
 	tests/backend_xdna_lane.o tests/edge_runtime.o tests/edge_runtime_nocuda.o \
 	tests/segment_runtime.o tests/segment_runtime_nocuda.o \
 	tests/segment_conformance_fixtures.o tests/deepseek_v4_native_quant.o \

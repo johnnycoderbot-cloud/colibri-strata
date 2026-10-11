@@ -176,5 +176,39 @@
       "bare-metal GPU/NPU/TPU/AIPU and state/SSD scheduling qualification remain incomplete"
     ],
     "artifact": ".omx/research/mojo-backend-review.md"
+  },
+  {
+    "id": "native-freetoken-split",
+    "reviewer": "/root/architecture",
+    "status": "approved",
+    "scope": "actual compiled Mojo C ABI, shared Vulkan cold partitions/retention/LRU, source pins and exactly-once rank-order joins",
+    "artifact": ".omx/research/freetoken-port-review.md",
+    "verification": {
+      "c_strict_cases": 31451,
+      "c_fast_math_cases": 7451,
+      "c_platforms": [
+        "Windows MSVC",
+        "Linux GCC"
+      ],
+      "c_sanitizers": "ASan/UBSan/leaks passed",
+      "mojo_c_exact_comparisons": 20111,
+      "mojo_checks": 63238,
+      "mojo_loader_sanitizers": "ASan/UBSan/leaks passed",
+      "builder_tests": 4,
+      "collector_tests": 6,
+      "generated_dependency_tests": 8,
+      "native_tier_gate": "PASS, actual compiled Mojo plus software Vulkan including retained fills, LRU and phase transitions",
+      "mixed_cpu_prefill": "exact rows/counts plus legacy grouping gate passed",
+      "full_vulkan_sanitizers": "ASan/UBSan/leaks passed; actual compiled Mojo and full native tier gate; no suppressions",
+      "vulkan_cleanup_regression": "normalization shader/pipeline/layout and two descriptor pools released; previous 975296-byte/968-allocation leak eliminated"
+    },
+    "qualification_limits": [
+      "serial cold staging before concurrent compute, not new CPU/DMA overlap",
+      "shared Vulkan caller wired; other backend callers remain pending",
+      "single-device main-format unique one-row cold partitions; existing multi-device residency remains",
+      "software Vulkan/WSL model evidence, not physical GPU/NPU/TPU/AIPU speed",
+      "tensor-parallel collective and semantic-anchor ports remain separate"
+    ],
+    "cleanup_review": "normalization pipeline/shader/descriptors owned and released after device-idle; cleanup-only repair changes no inference operation"
   }
 ]

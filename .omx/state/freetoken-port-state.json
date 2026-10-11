@@ -1,0 +1,55 @@
+{
+  "phase": "freetoken-mechanisms",
+  "active": true,
+  "status": "ready_for_publication",
+  "complete": false,
+  "runtime": "native-in-session",
+  "owners": {
+    "/root": "shared Vulkan execution wiring, integration and measured evidence",
+    "/root/memory_primitives": "native C split policy and contract tests",
+    "/root/mojo_dispatch": "compiled Mojo ABI and native loader qualification",
+    "/root/architecture": "independent execution/ownership review"
+  },
+  "scope": "full-cost concurrent expert partitions and join, native Mojo mapping/dispatch binding; preserve existing residency and prefill paths",
+  "next_gate": "publish reviewed native coordinator and scoped evidence",
+  "review": "approved independent source/ABI/ownership review",
+  "qualification": {
+    "c_strict_cases": 31451,
+    "c_fast_math_cases": 7451,
+    "c_platforms": [
+      "Windows MSVC",
+      "Linux GCC"
+    ],
+    "c_sanitizers": "ASan/UBSan/leaks passed",
+    "mojo_c_exact_comparisons": 20111,
+    "mojo_checks": 63238,
+    "mojo_loader_sanitizers": "ASan/UBSan/leaks passed",
+    "builder_tests": 4,
+    "collector_tests": 6,
+    "generated_dependency_tests": 8,
+    "native_tier_gate": "PASS, actual compiled Mojo plus software Vulkan including retained fills, LRU and phase transitions",
+    "mixed_cpu_prefill": "exact rows/counts plus legacy grouping gate passed",
+    "full_vulkan_sanitizers": "ASan/UBSan/leaks passed; actual compiled Mojo and full native tier gate; no suppressions",
+    "vulkan_cleanup_regression": "normalization shader/pipeline/layout and two descriptor pools released; previous 975296-byte/968-allocation leak eliminated"
+  },
+  "benchmark": {
+    "artifact": "experimental/strata/results/freetoken-olmoe-mojo-software.json",
+    "pairs": 9,
+    "paired_median_ratio": 0.9932801343973122,
+    "candidate_wins": 3,
+    "exact_output_ids_counts_text": true,
+    "maximum_logprob_error": 0.0,
+    "physical_gpu": false,
+    "scope": "software Vulkan; no GPU-speed claim",
+    "default": "off; no repeatable speed gain qualified",
+    "provenance": "frozen report source/binary hashes predating cleanup-only Vulkan shutdown repair; final optimized and sanitizer gates rerun after repair; inference operations unchanged",
+    "backend_vulkan_sha256": "dc79dda7628b764f6e29aa6119c31ab4be5e65a1f9f1ec234977d0f2f51dadc0"
+  },
+  "limits": [
+    "serial cold staging before concurrent compute, not new CPU/DMA overlap",
+    "shared Vulkan caller wired; other backend callers remain pending",
+    "single-device main-format unique one-row cold partitions; existing multi-device residency remains",
+    "software Vulkan/WSL model evidence, not physical GPU/NPU/TPU/AIPU speed",
+    "tensor-parallel collective and semantic-anchor ports remain separate"
+  ]
+}

@@ -185,6 +185,8 @@ jobs:
           cp c/tools/build_native_genai_c.ps1 c/tools/native_genai_c_apply_template.patch c/tools/native_genai_c_source_manifest.json dist/tools/
           # Optional Mojo backend is built on a supported host with its own SDK.
           cp c/native_mojo_backend.c c/native_mojo_backend.h c/mojo_runtime_main.c c/json.h dist/
+          cp c/runtime_split.c c/runtime_split.h c/mojo_split_loader.c c/mojo_split_loader.h c/mojo_split_dispatch.mojo dist/
+          cp c/tools/build_mojo_dispatch.py dist/tools/
           cp c/tools/build_native_mojo.py c/tools/prepare_mojo_fixture.py c/tools/check_native_mojo.py dist/tools/
           cp c/tools/k3_tokenizer.py dist/tools/
           # check_ablate_evidence.py verifies the ABLATE evidence that eval_glm.py

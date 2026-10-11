@@ -94,8 +94,9 @@
         "tensor-parallel rank/size plus native collectives",
         "phase-specific residency/prefill/state reuse"
       ],
-      "implementation_status": "not ported; current mapper selects one target",
-      "benchmark_status": "not run"
+      "implementation_status": "Native C full-cost split and actual compiled Mojo coordinator now wired to shared Vulkan cold decode, retained fills, batch-recency LRU and grouped OLMoE CPU prefill.",
+      "benchmark_status": "Nine real OLMoE pairs on software Vulkan: ratio0.99328, exact outputs and observed LP; no repeatable speed gain; opt-in.",
+      "qualification": ".omx/research/freetoken-port-qualification.json"
     }
   },
   "mojo_backend": {

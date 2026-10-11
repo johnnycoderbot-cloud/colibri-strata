@@ -1,0 +1,58 @@
+{
+  "schema": "colibri.native-freetoken-mechanisms/v1",
+  "verification": {
+    "c_strict_cases": 31451,
+    "c_fast_math_cases": 7451,
+    "c_platforms": [
+      "Windows MSVC",
+      "Linux GCC"
+    ],
+    "c_sanitizers": "ASan/UBSan/leaks passed",
+    "mojo_c_exact_comparisons": 20111,
+    "mojo_checks": 63238,
+    "mojo_loader_sanitizers": "ASan/UBSan/leaks passed",
+    "builder_tests": 4,
+    "collector_tests": 6,
+    "generated_dependency_tests": 8,
+    "native_tier_gate": "PASS, actual compiled Mojo plus software Vulkan including retained fills, LRU and phase transitions",
+    "mixed_cpu_prefill": "exact rows/counts plus legacy grouping gate passed",
+    "full_vulkan_sanitizers": "ASan/UBSan/leaks passed; actual compiled Mojo and full native tier gate; no suppressions",
+    "vulkan_cleanup_regression": "normalization shader/pipeline/layout and two descriptor pools released; previous 975296-byte/968-allocation leak eliminated"
+  },
+  "benchmark": {
+    "artifact": "experimental/strata/results/freetoken-olmoe-mojo-software.json",
+    "pairs": 9,
+    "paired_median_ratio": 0.9932801343973122,
+    "candidate_wins": 3,
+    "exact_output_ids_counts_text": true,
+    "maximum_logprob_error": 0.0,
+    "physical_gpu": false,
+    "scope": "software Vulkan; no GPU-speed claim",
+    "default": "off; no repeatable speed gain qualified",
+    "provenance": "frozen report source/binary hashes predating cleanup-only Vulkan shutdown repair; final optimized and sanitizer gates rerun after repair; inference operations unchanged",
+    "backend_vulkan_sha256": "dc79dda7628b764f6e29aa6119c31ab4be5e65a1f9f1ec234977d0f2f51dadc0"
+  },
+  "limits": [
+    "serial cold staging before concurrent compute, not new CPU/DMA overlap",
+    "shared Vulkan caller wired; other backend callers remain pending",
+    "single-device main-format unique one-row cold partitions; existing multi-device residency remains",
+    "software Vulkan/WSL model evidence, not physical GPU/NPU/TPU/AIPU speed",
+    "tensor-parallel collective and semantic-anchor ports remain separate"
+  ],
+  "source_sha256": {
+    "c/runtime_split.h": "69de6d0e091147e11f10cae4af04deee73bdbd7ff24a0d0be81f97e36fe06f76",
+    "c/runtime_split.c": "e7a941e7aad02a461fc3ab85be6d72671438ae57c5b34975675c2e7155c03ba4",
+    "c/mojo_split_dispatch.mojo": "142f1d7efed65eb9dd6c5e74eafb42c19e944b3dc254a08e01262de0f7fd9f2f",
+    "c/mojo_split_loader.h": "b9d3102ebdd1f62282212cccfcf597e6a2cb7b6a2aefb7944d97b7139e4b7478",
+    "c/mojo_split_loader.c": "07ddfb3899863f62ae9580f4ad79623fa7b3e5f99cf1a970fc3a6bc083207269",
+    "c/vk_tier.h": "f04e04df92add6a83cef619f261c8256aa688f8a3991a7af7e6ee6359177646c",
+    "c/vk_tier.c": "7f2707821d61aa7ab83bf66977b8a8c1f74f15949414cf412de964f52034d5a0",
+    "c/olmoe.c": "77c5dbffafe007a196f570ff56479a9b6d9547f43da514209751b228e396af97",
+    "c/qwen36.c": "0505b5789bd0a9b8b755594cec0bc7d7017dacb2d105f9fc39d1945199ae131d",
+    "c/tools/native_moe_split_bench.py": "102d6d6b88b9f6800eceeb05c7400ece4281c1f6c1baac4299f5c47164ebdf2a",
+    "c/backend_vulkan.c": "c2f90bfd8329203a045529c677621793c9344915aa2314418165d132e04734c5"
+  },
+  "vulkan_log_sha256": "06e406f04295edfdd53e37437c1532c540dd5406a2027abfabd884578e52e487",
+  "model_staging": "37 original/staged files matched independently; originals preserved; temporary WSL-native assets",
+  "vulkan_asan_log_sha256": "9b2336cca702d69588c15b2d7a4f174f5dc12eeb1e3c543408d96d30b62b8eaa"
+}

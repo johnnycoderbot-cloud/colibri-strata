@@ -117,6 +117,26 @@ static void prompt_vs_rows(Model *m, const char *mode) {
 int main(void) {
     static Model m;
     model_init_mem(&m);
+#ifdef COLI_VULKAN
+    /* Mixed prefill CPU assignments group by expert but keep private row/rank
+     * positions. Compare against independent one-row math, exactly. */
+    {
+        enum { S=7,N=S*K };
+        float x[S*D],group[N*D],ref[N*D],g[I],u[I];
+        int ids[N];uint8_t want[N];int jobs=0;
+        for(int i=0;i<S*D;i++)x[i]=frand();
+        memset(group,0,sizeof group);memset(ref,0,sizeof ref);
+        for(int i=0;i<N;i++){
+            ids[i]=(i*5+i/K)%E;want[i]=i%4!=0;jobs+=want[i];
+            if(want[i])moe_expert_row(&m,&m.cache[0].slots[ids[i]],x+(i/K)*D,g,u,ref+i*D);
+        }
+        uint64_t before=m.hits+m.miss;
+        moe_vk_cpu(&m,0,x,N,ids,want,group,g,u);
+        if(memcmp(group,ref,sizeof group) || m.hits+m.miss-before!=(uint64_t)jobs){
+            fprintf(stderr,"mixed prefill CPU grouping changed rows/counts\n");return 1;
+        }
+    }
+#endif
     unsetenv("IDOT");
 
     rows_vs_one("default");

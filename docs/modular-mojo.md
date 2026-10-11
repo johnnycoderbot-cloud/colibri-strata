@@ -15,6 +15,12 @@ scheduler in C. The implemented connection uses the [MAX C API](https://max.modu
 Deployment-specific kernel/stage routing and state/prefetch integration remain
 separate from loading and executing a compatible native graph.
 
+The [compiled Mojo coordinator](freetoken-mechanisms.md) now controls actual
+shared Vulkan cold-expert placement through a native C ABI. Mojo is the intended
+common mapping/dispatch layer; MAX, OpenVINO, Vulkan and device-specific SDKs
+are execution adapters underneath it. Only the shared Vulkan caller is wired
+to this new coordinator so far; broader adapter routing remains incomplete.
+
 | Component | Intended responsibility |
 |---|---|
 | SSD/NVMe | Read immutable model assets, stage expert weights and serve the storage tier. |

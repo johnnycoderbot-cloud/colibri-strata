@@ -233,6 +233,16 @@ int  vkt_join(const float **rows);
  * rank-order sum of w[s*K+k] * expert(s, k) as an fma chain from 0, the engines' loop),
  * summed on the device; else *sum = NULL. w as vkt_issue_w's (NULL = 1). */
 int vkt_join_sum(const float **rows, const float *w, const float **sum);
+/* Optional cold decode coordinator: host completion, including cache reads,
+ * after issue and before join. A trusted native calibration provider may set
+ * costs[9] per runtime_split.h for this exact engine/device/one-row workload.
+ * This is a planning profile, not device qualification or execution evidence. */
+void vkt_host_done(int pairs);
+void vkt_host_base_done(void); /* always-CPU shared work after host_done, before join */
+int vkt_split_profile(const double costs[9]);
+/* Diagnostic decode-only samples in us: host expert, upload/setup, device
+ * expert, always-host base. Zero means unmeasured; not hardware qualification. */
+int vkt_split_samples(double samples[4]);
 int  vkt_resident(int layer, int eid);
 /* The next vkt_issue starts a forward (promotion rate, decay, eviction candidates).
  * Optional: the tier tells forwards apart by the layer index going back, which a model
@@ -278,6 +288,10 @@ static inline int  vkt_wants(int l,int e){(void)l;(void)e;return 0;}
 static inline int  vkt_join(const float **r){(void)r;return 0;}
 static inline int  vkt_join_sum(const float **r, const float *w, const float **s){(void)r;(void)w;*s=0;return 0;}
 static inline int  vkt_resident(int l,int e){(void)l;(void)e;return 0;}
+static inline void vkt_host_done(int n){(void)n;}
+static inline void vkt_host_base_done(void){}
+static inline int vkt_split_profile(const double *c){(void)c;return 0;}
+static inline int vkt_split_samples(double *s){(void)s;return 0;}
 static inline void vkt_begin_forward(void){}
 static inline void vkt_report(const char *s,unsigned long long r,unsigned long long d){(void)s;(void)r;(void)d;}
 static inline size_t vkt_expert_bytes(int h,int i,VktFmt a,VktFmt b){(void)h;(void)i;(void)a;(void)b;return 0;}

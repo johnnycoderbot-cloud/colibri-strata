@@ -15,6 +15,8 @@ FILES = [
     "mojo_runtime", "mojo_runtime.exe",
     "native_graph_main.o", "native_graph_backend.o", "native_graph_manifest.o", "native_media.o",
     "runtime_map.o",
+    "runtime_split.o", "mojo_split_loader.o",
+    "libcoli_mojo_dispatch.so", "libcoli_mojo_dispatch.dylib",
     "inkling", "inkling.exe",
     "kimi_k3", "kimi_k3.exe",
     "olmoe", "olmoe.exe",

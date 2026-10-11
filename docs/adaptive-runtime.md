@@ -58,8 +58,11 @@ is not yet wired into the existing CLI AUTO selector or a Mojo device driver.
 These are selected integration requirements, not claims that every practice is
 already implemented. [FreeToken distribution investigation](../.omx/research/freetoken-distribution.md)
 distinguishes its concurrent CPU/GPU expert split from tensor-parallel rank
-metadata. Our current mapper chooses one target; partition/execute/join is a
-separate required extension.
+metadata. The single-work-unit mapper still chooses one target; the separate
+[native split/execute/join path](freetoken-mechanisms.md) now connects compiled
+Mojo decisions to shared Vulkan cold expert execution, preserving C state and
+backend ownership. Other adapter wiring and physical device qualification
+remain required.
 [vLLM prefix caching](https://docs.vllm.ai/en/latest/features/automatic_prefix_caching/)
 avoids repeated shared-prefix prefill; it does not by itself speed generation of
 new tokens. [vLLM Ascend's layer/sparse offload design](https://docs.vllm.ai/projects/ascend/en/latest/developer_guide/Design_Documents/layerwise_and_sparse_kv_cache_offloading.html)

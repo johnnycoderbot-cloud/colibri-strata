@@ -30,6 +30,8 @@
 #include "vk_tier.h"
 #include "backend_vulkan.h"
 #include "tier.h"
+#include "runtime_split.h"
+#include "mojo_split_loader.h"
 
 #define VKT_QCAP 32                 /* promotions staged and waiting for the uploader */
 #define VKT_CAND 64                 /* victim candidates kept per refresh */
@@ -39,7 +41,7 @@ enum { VS_NONE = 0, VS_QUEUED, VS_RESIDENT, VS_EVICT };
 
 typedef struct {
     ColiVkExpert *ex;
-    uint32_t heat, last;
+    uint32_t heat, last, lru_last;
     uint8_t state;
     uint8_t dev;                       /* the device it is on or on its way to (0, or 1: COLI_VK_DEV2's) */
 } VSlot;
@@ -49,7 +51,7 @@ typedef struct { int layer, eid, ok, copy_failed; ColiVkTensor *g, *u, *d; } VDo
  * every expert it carries) and a sub-batch in flight */
 enum { SS_FREE = 0, SS_FILLED, SS_BUSY };
 typedef struct { ColiVkTensor *t[3]; ColiVkExpert *ex; int layer, eid, state, pending, pref; } VStage;
-typedef struct { int n, nslot, cap, *slot; float **yout; } VSub;
+typedef struct { int n, nslot, cap, *slot; float **yout; double issue_ms; } VSub;
 
 static struct {
     int on;
@@ -133,6 +135,17 @@ static struct {
     uint32_t *pred; uint8_t *pred_ok;     /* per layer: the last big step's rows per expert */
     unsigned long long st_steps, st_experts, st_rows, st_bytes, st_subs, st_sums, st_kept, st_kept_rows, pf_n, pf_used;
     double st_up_ms;
+    /* FreeToken-style cold decode partition. Mojo controls placement; C owns
+     * buffers, backend execution and fences. This backend stages cold uploads
+     * serially before both compute branches, so the planner charges them there. */
+    int split_mode, split_override, lru, split_decode, split_calibrated;
+    uint32_t lru_clock; /* one stamp per expert batch; active entries tie/protect */
+    ColiMojoSplit *split_mojo;
+    ColiSplitPlanner split_plan;
+    double split_costs[9], split_cpu_row_ms, split_gpu_row_ms, split_host_start, split_host_end, split_host_base_ms, split_upload_ms;
+    unsigned long long split_steps, split_device, split_host, split_deferred;
+    unsigned long long split_bootstrap;
+    double split_predicted_us;
 } T;
 
 /* "2.31 GiB", "35.0 MiB", "9.5 KiB": the budget lines read on a 24 GB card and a tiny fixture alike */
@@ -458,7 +471,10 @@ static int room_dev(int layer) {
 }
 
 /* ---- placement ------------------------------------------------------------------ */
-static uint64_t score(const VSlot *v) { return tier_lfru_score(v->heat, v->last, T.tick); }
+static uint64_t score(const VSlot *v) {
+    return T.lru ? UINT32_MAX-(uint32_t)(T.lru_clock-v->lru_last)
+                 : tier_lfru_score(v->heat, v->last, T.tick);
+}
 
 /* The coldest residents of each kind, ascending, once per forward. */
 static void refresh_candidates(void) {
@@ -484,12 +500,14 @@ static void drop_victim(int k) {
     memmove(T.cand_score[k], T.cand_score[k] + 1, (size_t)T.ncand[k] * sizeof(uint64_t));
 }
 static int peek_victim(int k, uint64_t hs) {
+    if (T.lru) refresh_candidates(); /* accesses since the forward began matter */
     while (T.ncand[k]) {
         int i = T.cand[k][0];
         VSlot *v = &T.s[i];
         if (v->state != VS_RESIDENT) { drop_victim(k); continue; }
         uint64_t cs = score(v);
-        return hs > cs + (cs >> 2) + (4u << 8) ? i : -1;
+        return T.lru ? (hs > cs ? i : -1)
+                     : (hs > cs + (cs >> 2) + (4u << 8) ? i : -1);
     }
     return -1;
 }
@@ -758,8 +776,12 @@ static void st_fill_group(int layer, const int *eids, const int *slots, int n, u
             #pragma omp parallel for schedule(dynamic, 1) if (T.st_par)
             for (int j = 0; j < got; j++)
                 ok[base + j] = (uint8_t)st_put(layer, eids[base + j], &T.st[slots[base + j]], &srcs[j], 0);
+            for (int j = 0; j < got; j++) {
+                if(ok[base+j] && T.split_mode && T.split_decode && T.lru)
+                    vkt_note(layer,eids[base+j],&srcs[j]);
+                T.c.release(T.c.load_ctx, hs[j]);
+            }
             ms += vkt_now_ms() - t0;
-            for (int j = 0; j < got; j++) T.c.release(T.c.load_ctx, hs[j]);
             base += got;
             continue;
         }
@@ -770,8 +792,11 @@ static void st_fill_group(int layer, const int *eids, const int *slots, int n, u
         if (T.c.load(T.c.load_ctx, layer, eids[base], &src, &h)) {
             double t0 = vkt_now_ms();
             ok[base] = (uint8_t)st_put(layer, eids[base], &T.st[slots[base]], &src, T.st_par);
-            ms += vkt_now_ms() - t0;
+            /* Copy before release; the bounded uploader publishes at a fence.
+             * LRU excludes same-step active residents from eviction. */
+            if(ok[base] && T.split_mode && T.split_decode && T.lru)vkt_note(layer,eids[base],&src);
             T.c.release(T.c.load_ctx, h);
+            ms += vkt_now_ms() - t0;
         }
         base++;
     }
@@ -792,6 +817,10 @@ static void st_fill_group(int layer, const int *eids, const int *slots, int n, u
         done++;
     }
     ms += vkt_now_ms() - t0;
+    if(T.split_mode && T.split_decode && done && ms>0){
+        double sample=ms/done;
+        T.split_upload_ms=T.split_upload_ms>0?0.8*T.split_upload_ms+0.2*sample:sample;
+    }
     T.st_up_ms += ms; T.st_bytes += (unsigned long long)done * T.exp_bytes;
     if (done && ms > 0) { double bw = (double)done * T.exp_bytes / ms; T.bw_up = T.bw_up > 0 ? 0.8 * T.bw_up + 0.2 * bw : bw; }
 }
@@ -801,8 +830,15 @@ static int st_join_half(int h) {
     if (!coli_vk_xb_sub_busy(h)) return 1;
     double dms = 0, t0 = vkt_now_ms();
     int ok = coli_vk_xb_sub_join(h, b->yout, &dms);
-    T.wait_ms += vkt_now_ms() - t0;
+    double join_ms=vkt_now_ms()-t0;
+    T.wait_ms += join_ms;
     T.dev_ms += dms;
+    if (T.split_mode && T.split_decode && ok && b->n > 0 && dms > 0) {
+        /* Conservatively charge issue and exposed join/readback as well as
+         * shader time. A wait may overlap shader time: never credit it twice. */
+        double sample=(dms+join_ms+b->issue_ms)/b->n;
+        T.split_gpu_row_ms=T.split_gpu_row_ms>0?0.8*T.split_gpu_row_ms+0.2*sample:sample;
+    }
     for (int i = 0; i < b->nslot; i++) {
         VStage *v = &T.st[b->slot[i]];
         if (--v->pending <= 0) { v->pending = 0; v->state = SS_FREE; }
@@ -824,6 +860,54 @@ static int grow_int(int **p, int *cap, int need) {
  * sub-batches; the CPU gets the rest (taken stays 0). The second device's residents run
  * there as one batch beside them, up to d2_rows rows (past that the rule decides). */
 enum { BC_NONE = 0, BC_DEV, BC_STREAM, BC_CPU, BC_DEV2 };
+/* Only one-row decode has equal expert work. Variable-row prefill keeps its
+ * existing measured streaming rule. No invented device/DMA concurrency. */
+static void split_cold_decode(int S,int layer,int *cnt,int *cls) {
+    if (!T.split_mode || S!=1 || layer>=T.main_layers || T.d2) return;
+    unsigned misses=0,resident=0;
+    for(int e=0;e<T.c.experts;e++) {
+        if(cnt[e]>1){T.split_decode=0;T.split_deferred++;return;}
+        if(cls[e]==BC_CPU || cls[e]==BC_STREAM){cls[e]=BC_CPU;if(cnt[e])misses++;}
+        else if(cls[e]==BC_DEV)resident++;
+    }
+    if(misses>COLI_SPLIT_MAX_EXPERTS){T.split_deferred++;return;}
+    if(misses && !st_alloc()){T.split_deferred++;return;}
+    unsigned cap=(unsigned)T.st_per;
+    size_t available=(size_t)(compat_mem_available_gb()*1e9);
+    int rows=coli_vk_xb_sub_fit(T.st_half,T.c.experts+1,available?available/2:SIZE_MAX);
+    if(rows<=(int)resident)cap=0;
+    else if(cap>(unsigned)(rows-(int)resident))cap=(unsigned)(rows-(int)resident);
+    if(cap>misses)cap=misses;
+    double costs[9]={0};
+    if(T.split_override)memcpy(costs,T.split_costs,sizeof costs);
+    else {
+        if(!(T.split_cpu_row_ms>0 && T.split_upload_ms>0 && T.split_gpu_row_ms>0)){
+            /* One bounded calibration split obtains real decode samples.
+             * No invented profile and no repeated calibration after a failure. */
+            if(!T.split_calibrated && misses>=2 && cap>0){
+                for(int e=0;e<T.c.experts;e++)if(cls[e]==BC_CPU && cnt[e]){cls[e]=BC_STREAM;break;}
+                T.split_calibrated=1;T.split_bootstrap++;
+            }
+            T.split_deferred++;return;
+        }
+        costs[0]=T.split_cpu_row_ms*1000.;
+        costs[1]=T.split_upload_ms*1000.;
+        costs[2]=T.split_gpu_row_ms*1000.;
+        costs[3]=T.split_host_base_ms*1000.;
+        costs[4]=(double)resident*costs[2];
+    }
+    uint32_t control[4]={COLI_SPLIT_ABI,misses,cap,0},counts[2]={0};
+    double times[4]={0};
+    if(T.split_plan(control,costs,counts,times)) {
+        if(T.split_mojo){fprintf(stderr,"[split] native Mojo decision refused; no replacement planner\n");exit(1);}
+        T.split_deferred++;return;
+    }
+    unsigned left=counts[0];
+    /* IDs are deterministic; source/weight identity never changes. */
+    for(int e=0;e<T.c.experts && left;e++)if(cls[e]==BC_CPU && cnt[e]){cls[e]=BC_STREAM;left--;}
+    T.split_steps++;T.split_device+=counts[0];T.split_host+=counts[1];
+    T.split_predicted_us+=times[3];
+}
 /* the second device's batch of a big step: its experts' rows, in its one batch */
 static int d2_issue_big(int layer, const float *x, int K, const float *w, const int *cnt, const int *ofs,
                         const int *cls, uint8_t *taken) {
@@ -865,6 +949,7 @@ static int d2_issue_big(int layer, const float *x, int K, const float *w, const 
 }
 static int issue_big(int layer, const float *x, int S, int K, const int *idx, const float *w, uint8_t *taken) {
     const int E = T.c.experts, H = T.c.hidden, n = S * K;
+    T.split_decode=S==1 && !T.d2 && layer>=0 && layer<T.main_layers;
     int *cnt = T.bcnt, *ofs = T.bofs, *cls = T.bcls;
     memset(cnt, 0, (size_t)E * sizeof(int));
     for (int i = 0; i < n; i++) {
@@ -874,6 +959,7 @@ static int issue_big(int layer, const float *x, int S, int K, const int *idx, co
         VSlot *v = slot(layer, e);
         if (v->heat < 0xFFFFFFFFu) v->heat++;
         v->last = T.tick;
+        v->lru_last=T.lru_clock;
         cnt[e]++;
     }
     /* the rows grouped by expert, each expert's in routing order; its class */
@@ -891,6 +977,7 @@ static int issue_big(int layer, const float *x, int S, int K, const int *idx, co
             if (d2r + cnt[e] > T.d2_rows) cls[e] = T.st_ok && cnt[e] >= R ? BC_STREAM : BC_CPU;
             else d2r += cnt[e];
         }
+    split_cold_decode(S,layer,cnt,cls);
     int *fill = malloc((size_t)E * sizeof(int));
     if (!fill) return 0;
     memcpy(fill, ofs, (size_t)E * sizeof(int));
@@ -989,8 +1076,10 @@ static int issue_big(int layer, const float *x, int S, int K, const int *idx, co
     int curh = 0;
 #define SUBMIT_CURRENT() do { \
         if (cnt_b) { \
+            double split_submit_start=vkt_now_ms(); \
             int okk = !T.big_fail && (T.sy_step ? coli_vk_xb_sub_issue_step(curh, bex, brows, cnt_b, bidx, bw) \
                                                 : coli_vk_xb_sub_issue(curh, bex, brows, cnt_b, bx, bw)); \
+            cur->issue_ms=vkt_now_ms()-split_submit_start; \
             if (okk) { \
                 for (int q = 0; q < rows_b; q++) { taken[bidx[q]] = 1; T.map[bidx[q]] = bidx[q]; } \
                 total += rows_b; T.st_subs++; T.sk++; \
@@ -1133,6 +1222,9 @@ static int join_big(const float **rows) {
 /* layer's likely streamed experts into the free slots, while the device runs its attention */
 int vkt_stream_prefetch(int layer, int S) {
     if (!T.on || !T.st_ok || T.inflight || layer < 0 || layer >= T.main_layers || S < T.gemm_rows) return 0;
+    /* A refused prefetch preserves the active cohort. Valid prefill staging
+     * neither trains decode costs nor promotes its broad working set. */
+    T.split_decode=0;
     if (!coli_vk_xb_ready() || !st_alloc()) return 0;
     const int E = T.c.experts, K = T.c.topk;
     int R = stream_min_rows();
@@ -1197,7 +1289,9 @@ static int issue(int layer, const float *x, int S, int K, const int *idx, const 
     }
     T.last_layer = layer;
     quiesce();
-    if (T.st_ok && S >= T.gemm_rows && layer < T.main_layers) return issue_big(layer, x, S, K, idx, w, taken);
+    if(T.lru)T.lru_clock++;
+    if (T.st_ok && (S >= T.gemm_rows || (T.split_mode && S==1 && !T.d2)) && layer < T.main_layers)
+        return issue_big(layer, x, S, K, idx, w, taken);
     int E = T.c.experts, H = T.c.hidden, n = S * K;
     if (!grow_map(n)) return 0;
     /* heat for every routed expert, groups for the resident ones (first seen first) */
@@ -1211,6 +1305,7 @@ static int issue(int layer, const float *x, int S, int K, const int *idx, const 
         VSlot *v = slot(layer, e);
         if (v->heat < 0xFFFFFFFFu) v->heat++;
         v->last = T.tick;
+        v->lru_last=T.lru_clock;
         if (v->state != VS_RESIDENT) continue;
         if (v->dev && rows1 >= T.d2_rows) continue;    /* the second device's batch is as large as it gets */
         int g = T.grp[e];
@@ -1317,10 +1412,42 @@ static int issue(int layer, const float *x, int S, int K, const int *idx, const 
     return took;
 }
 int vkt_issue(int layer, const float *x, int S, int K, const int *idx, uint8_t *taken) {
-    return issue(layer, x, S, K, idx, NULL, taken);
+    int eligible=S==1 && !T.d2 && layer>=0 && layer<T.main_layers;
+    if(eligible)for(int i=0;i<K;i++)for(int j=0;j<i;j++)if(idx[i]>=0 && idx[i]==idx[j])eligible=0;
+    int n=issue(layer, x, S, K, idx, NULL, taken);
+    if(T.split_mode){T.split_host_start=vkt_now_ms();T.split_decode=eligible;}
+    return n;
 }
 int vkt_issue_w(int layer, const float *x, int S, int K, const int *idx, const float *w, uint8_t *taken) {
-    return issue(layer, x, S, K, idx, w, taken);
+    int eligible=S==1 && !T.d2 && layer>=0 && layer<T.main_layers;
+    if(eligible)for(int i=0;i<K;i++)for(int j=0;j<i;j++)if(idx[i]>=0 && idx[i]==idx[j])eligible=0;
+    int n=issue(layer, x, S, K, idx, w, taken);
+    if(T.split_mode){T.split_host_start=vkt_now_ms();T.split_decode=eligible;}
+    return n;
+}
+void vkt_host_done(int pairs) {
+    if(!T.on || !T.split_mode || !T.split_decode)return;
+    T.split_host_end=vkt_now_ms();
+    if(pairs<1)return;
+    double ms=T.split_host_end-T.split_host_start;
+    if(ms>0){double sample=ms/pairs;T.split_cpu_row_ms=T.split_cpu_row_ms>0?0.8*T.split_cpu_row_ms+0.2*sample:sample;}
+}
+void vkt_host_base_done(void) {
+    if(!T.on || !T.split_mode || !T.split_decode)return;
+    double ms=vkt_now_ms()-T.split_host_end;
+    if(ms>0)T.split_host_base_ms=T.split_host_base_ms>0?0.8*T.split_host_base_ms+0.2*ms:ms;
+}
+int vkt_split_profile(const double costs[9]) {
+    if(!T.on || !T.split_mode || !costs)return 0;
+    uint32_t c[4]={COLI_SPLIT_ABI,1,1,0},n[2];double t[4];
+    if(coli_split_plan(c,costs,n,t) || costs[0]<=0 || costs[2]<=0)return 0;
+    memcpy(T.split_costs,costs,sizeof T.split_costs);T.split_override=1;return 1;
+}
+int vkt_split_samples(double samples[4]) {
+    if(!T.on || !T.split_mode || !samples)return 0;
+    double s[4]={T.split_cpu_row_ms*1000.,T.split_upload_ms*1000.,
+                 T.split_gpu_row_ms*1000.,T.split_host_base_ms*1000.};
+    memcpy(samples,s,sizeof s);return 1;
 }
 
 int vkt_join(const float **rows) {
@@ -1338,6 +1465,10 @@ int vkt_join(const float **rows) {
     double tw = vkt_now_ms() - t0;
     T.wait_ms += tw;
     T.dev_ms += dms + dms1; T.d2_ms += dms1;
+    if(T.split_mode && T.split_decode && ok && ok1 && T.S==1) {
+        int pairs=0;for(int i=0;i<T.S*T.K;i++)pairs+=T.map[i]>=0;
+        if(pairs>0 && dms>0){double sample=dms/pairs;T.split_gpu_row_ms=T.split_gpu_row_ms>0?0.8*T.split_gpu_row_ms+0.2*sample:sample;}
+    }
     if (dms1 > dms) dms = dms1;   /* the two ran side by side: the step waited for the slower */
     /* The balance moves only on steps where it had a choice. Waiting for more than
      * a tenth of the CPU's own time: give the CPU more. The device done well before
@@ -1489,6 +1620,16 @@ int vkt_init(const VktConfig *cfg, uint32_t *const *heat) {
     const char *eng = cfg->engine ? cfg->engine : "engine";
     memset(&T, 0, sizeof T);
     T.c = *cfg;
+    const char *split=getenv("COLI_VK_TIER_SPLIT"),*policy=getenv("COLI_VK_TIER_POLICY");
+    if(policy && *policy && strcmp(policy,"lfru") && strcmp(policy,"lru")){
+        fprintf(stderr,"[split] COLI_VK_TIER_POLICY must be lfru or lru\n");exit(1);
+    }
+    T.lru=policy && !strcmp(policy,"lru");
+    if(split && *split && strcmp(split,"off") && strcmp(split,"native") && strcmp(split,"mojo")){
+        fprintf(stderr,"[split] COLI_VK_TIER_SPLIT must be off, native or mojo\n");exit(1);
+    }
+    T.split_mode=split && (!strcmp(split,"native") || !strcmp(split,"mojo"));
+    T.split_plan=coli_split_plan;
     snprintf(T.engine, sizeof T.engine, "%s", eng);
     if (T.c.layers < 1 || T.c.experts < 1 || T.c.hidden < 1 || T.c.inter < 1 || T.c.topk < 1) return 0;
     T.main_layers = T.c.layers;
@@ -1659,6 +1800,14 @@ int vkt_init(const VktConfig *cfg, uint32_t *const *heat) {
     if (pthread_create(&T.th, NULL, uploader, NULL)) return 0;
     T.th_on = 1;
     T.on = 1;
+    if(split && !strcmp(split,"mojo")) {
+        char diagnostic[1024];
+        if(coli_mojo_split_open(NULL,&T.split_mojo,diagnostic,sizeof diagnostic)){
+            fprintf(stderr,"[split] requested Mojo dispatch unavailable: %s\n",diagnostic);
+            vkt_shutdown();exit(1);
+        }
+        T.split_plan=coli_mojo_split_planner(T.split_mojo);
+    }
     char hb[32], he[32];
     fprintf(stderr, "[VK] tier %s: on, %s, budget %s = %d experts of %s (fmt %d", eng,
             coli_vk_device_name(), human((double)T.budget, hb, sizeof hb), T.dmax[0],
@@ -1698,6 +1847,10 @@ void vkt_report(const char *scope, unsigned long long ram_hits, unsigned long lo
             human((double)T.upload_bytes, hl, sizeof hl), T.warm, T.evictions, T.qfull, T.rated, T.failed,
             T.dev_ms, T.cpu_ms, T.wait_ms, T.dev_ms > 0 ? 100.0 * hidden / T.dev_ms : 0.0);
     if (T.balance) fprintf(stderr, " | balance: device share %.2f, %llu rows handed to the CPU", T.share, T.handed);
+    if(T.lru)fprintf(stderr," | replacement: LRU");
+    if(T.split_mode)fprintf(stderr," | split: %s %llu decisions, planned cold device %llu CPU %llu, deferred %llu, calibration %llu, predicted %.3f ms%s",
+        T.split_mojo?"mojo":"native",T.split_steps,T.split_device,T.split_host,T.split_deferred,
+        T.split_bootstrap,T.split_predicted_us/1000.,T.split_override?" (caller profile)":" (live decode costs)");
     if (T.c.extra_layers)
         fprintf(stderr, " | extra layers (%d): %llu of %llu routed experts on the device, resident %d (budget %d)",
                 T.c.extra_layers, T.extra_served, T.extra_routed, T.xres, T.xmax);
@@ -1747,6 +1900,8 @@ int vkt_ram_first(int layer, int eid) {
 void vkt_ram_gave(void) { __atomic_add_fetch(&T.ram_gave, 1, __ATOMIC_RELAXED); }
 
 void vkt_shutdown(void) {
+    /* No planner call after this point; device/data fences still precede frees. */
+    coli_mojo_split_close(T.split_mojo);T.split_mojo=NULL;
     if (!T.s) return;
     if (T.th_on) {
         pthread_mutex_lock(&T.mx); T.stop = 1; pthread_cond_broadcast(&T.cv); pthread_cond_broadcast(&T.cv_room); pthread_cond_broadcast(&T.cv_done); pthread_mutex_unlock(&T.mx);

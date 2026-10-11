@@ -1463,6 +1463,27 @@ static void moe_by_expert(Model *m, int layer, const float *x, int S, float *log
 static void moe_vk_cpu(Model *m, int layer, const float *x, int n, const int *ib,
                        const uint8_t *want, float *ctb, float *g, float *u) {
     int D = m->c.hidden, K = m->c.topk;
+    if(n>K) {
+        /* Prefill: hold each expert once for all its CPU-assigned rows. Private
+         * output positions are unchanged, so the final rank-order sum is exact.
+         * This avoids row-by-row RAM-cache thrash beside a small device tier. */
+        for(int eid=0;eid<m->c.n_experts;eid++) {
+            int first=-1;
+            for(int i=0;i<n;i++)if(want[i] && ib[i]==eid){first=i;break;}
+            if(first<0)continue;
+            Slot *e;expert_get(m,layer,eid,&e);
+            int rows=0;
+            for(int i=first;i<n;i++)if(want[i] && ib[i]==eid){
+                moe_expert_row(m,e,x+(int64_t)(i/K)*D,g,u,ctb+(int64_t)i*D);rows++;
+            }
+            pthread_mutex_lock(&g_pilot_mx);
+            m->hits+=rows-1; /* held expert reuse still counts each CPU assignment */
+            if(e->eid==eid){VktExpertSrc vs=olmoe_vk_src(e);vkt_note(layer,eid,&vs);}
+            e->busy--;
+            pthread_mutex_unlock(&g_pilot_mx);
+        }
+        return;
+    }
     for (int i = 0; i < n; i++) {
         if (!want[i]) continue;
         Slot *e; expert_get(m, layer, ib[i], &e);
@@ -1493,6 +1514,8 @@ static void moe_vk_run(Model *m, int layer, const float *x, int S, float *logits
         for (int i = 0; i < n; i++) { want[i] = !taken[i]; if (taken[i]) ehit_mark(m, layer, ib[i]); }
         pthread_mutex_unlock(&g_pilot_mx);
         moe_vk_cpu(m, layer, xb, n, ib, want, ctb, g, u);
+        int cpu_pairs=0;for(int i=0;i<n;i++)cpu_pairs+=ib[i]>=0 && !taken[i];
+        vkt_host_done(cpu_pairs);
         if (ndev && !vkt_join(dev)) {   /* the batch failed (the tier stops): those pairs here */
             moe_vk_cpu(m, layer, xb, n, ib, taken, ctb, g, u);
             memset(taken, 0, (size_t)n);

@@ -179,6 +179,7 @@ static double step(int layer, int S, const int *idx, const float *w, Books *bk) 
         expert_ref(&ex[layer][idx[i]], x + (size_t)(i / K) * H, cpu + (size_t)i * H);
         VktExpertSrc s = src_of(&ex[layer][idx[i]]); vkt_note(layer, idx[i], &s);
     }
+    vkt_host_done(S*K-n);
     int joined = n ? vkt_join(dev) : 1;
     CHECK(joined, "join failed");
     double worst = 0;
@@ -649,6 +650,7 @@ static double stream_step(int layer, int S, const int *idx, const float *w, int 
         VktExpertSrc s = src_of(&ex[layer][idx[i]]); vkt_note(layer, idx[i], &s);
         (*kept)++;
     }
+    vkt_host_done(S*K-n);
     int joined = n ? vkt_join(dev) : 1;
     CHECK(joined, "stream: join failed");
     double worst = 0;
@@ -905,6 +907,97 @@ static void grouped(void) {
     H = h0;
 }
 
+/* Actual native cold-decode dispatch and rank-order join. Cost fixtures control
+ * placement only; their numbers are not hardware performance measurements. */
+static void split_decode(const char *mode) {
+    VktFmt f={VKT_SRC_F32,0};
+    model_make(f,f);g_act=VKT_ACT_SWIGLU;g_limit=0;
+    set_budget(16,f,f);
+    setenv("COLI_VK_TIER_SPLIT",mode,1);
+    setenv("COLI_VK_TIER_POLICY","lru",1);
+    setenv("COLI_VK_TIER_STREAM_SLOTS","8",1);
+    setenv("COLI_VK_TIER_RATE","0",1);
+    VktConfig c=cfg_of(f,f,VKT_ACT_SWIGLU,0);
+    c.load=load_cb;c.release=release_cb;
+    int on=vkt_init(&c,NULL);
+    CHECK(on,"split %s: tier initialization",mode);
+    if(on) {
+        int idx[K]={3,4,5};float w[K]={.2f,.3f,.5f};
+        unsigned long long bg=0,bc=0;Books bootstrap={0};
+        double be=stream_step(0,1,idx,w,0,&bootstrap,&bg,&bc,0);
+        CHECK(bg==1 && bc==2 && be<2e-3,"split %s bounded live calibration",mode);
+        double before[4],after[4];
+        CHECK(vkt_split_samples(before),"split samples available");
+        CHECK(vkt_stream_prefetch(0,32)>0,"decode-to-prefill staging ran");
+        CHECK(vkt_split_samples(after) && !memcmp(before,after,sizeof before),
+              "prefill staging preserves decode-only samples");
+        double mixed[9]={10,1,1,0,14,0,0,0,0};
+        double host[9]={2,100,100,0,0,0,0,0,0};
+        double device[9]={100,1,1,0,0,0,0,0,0};
+        const double *cases[3]={mixed,host,device};unsigned expected[3]={2,0,3};
+        for(int j=0;j<3;j++) {
+            CHECK(vkt_split_profile(cases[j]),"split %s profile%d",mode,j);
+            unsigned long long gpu=0,cpu=0;Books b={0};
+            double err=stream_step(0,1,idx,w,0,&b,&gpu,&cpu,0);
+            CHECK(gpu==expected[j] && cpu==K-expected[j],
+                  "split %s case%d: GPU%llu CPU%llu",mode,j,gpu,cpu);
+            CHECK(err<2e-3,"split %s case%d: native output %.5g",mode,j,err);
+        }
+        double invalid[9]={-1,0,1};
+        CHECK(!vkt_split_profile(invalid),"split invalid profile refused");
+        vkt_shutdown();
+    }
+    model_free();
+    unsetenv("COLI_VK_TIER_SPLIT");unsetenv("COLI_VK_TIER_POLICY");
+    unsetenv("COLI_VK_TIER_STREAM_SLOTS");
+}
+static void split_warm(const char *mode) {
+    VktFmt f={VKT_SRC_F32,0};
+    model_make(f,f);g_act=VKT_ACT_SWIGLU;g_limit=0;set_budget(16,f,f);
+    setenv("COLI_VK_TIER_SPLIT",mode,1);setenv("COLI_VK_TIER_POLICY","lru",1);
+    setenv("COLI_VK_TIER_SYNC","1",1);setenv("COLI_VK_TIER_RATE","16",1);
+    setenv("COLI_VK_TIER_STREAM_SLOTS","8",1);
+    VktConfig c=cfg_of(f,f,VKT_ACT_SWIGLU,0);c.load=load_cb;c.release=release_cb;
+    int on=vkt_init(&c,NULL);CHECK(on,"split warm %s init",mode);
+    if(on){
+        double p[9]={100,1,1};CHECK(vkt_split_profile(p),"split warm profile");
+        int idx[K]={3,4,5};float w[K]={.2f,.3f,.5f};Books b={0};
+        unsigned long long gpu=0,cpu=0;
+        CHECK(stream_step(0,1,idx,w,0,&b,&gpu,&cpu,0)<2e-3 && gpu==3 && cpu==0,
+              "split warm %s GPU-only cold output",mode);
+        CHECK(vkt_resident(0,3)&&vkt_resident(0,4)&&vkt_resident(0,5),
+              "split warm %s fetched experts remain resident",mode);
+        p[4]=3;CHECK(vkt_split_profile(p),"split warm resident base");
+        CHECK(step(0,1,idx,w,&b)<2e-3,"split warm cached output");
+        vkt_shutdown();
+    }
+    model_free();unsetenv("COLI_VK_TIER_SPLIT");unsetenv("COLI_VK_TIER_POLICY");
+    unsetenv("COLI_VK_TIER_SYNC");unsetenv("COLI_VK_TIER_STREAM_SLOTS");
+}
+static void lru_rotate(void) {
+    VktFmt f={VKT_SRC_I8_ROW,0};
+    model_make(f,f);g_act=VKT_ACT_SWIGLU;g_limit=0;set_budget(2,f,f);
+    setenv("COLI_VK_TIER_POLICY","lru",1);setenv("COLI_VK_TIER_SYNC","1",1);
+    setenv("COLI_VK_TIER_RATE","16",1);
+    VktConfig c=cfg_of(f,f,VKT_ACT_SWIGLU,0);
+    uint32_t hist[L][E]={{0}},*hist_rows[L];
+    for(int l=0;l<L;l++)hist_rows[l]=hist[l];
+    hist[0][0]=100;hist[0][1]=90;
+    int on=vkt_init(&c,hist_rows);CHECK(on,"LRU tier init");
+    if(on){
+        int pl[L*E],pe[L*E],np=vkt_plan(pl,pe,L*E);
+        CHECK(np==2,"LRU warm plan");
+        for(int i=0;i<np;i++){VktExpertSrc s=src_of(&ex[pl[i]][pe[i]]);CHECK(vkt_put(pl[i],pe[i],&s),"LRU warm expert");}
+        vkt_put_done();
+        int first[K]={0,1,0},second[K]={0,2,3};float w[K]={.2f,.3f,.5f};Books b={0};
+        vkt_begin_forward();CHECK(step(0,1,first,w,&b)<2e-3,"LRU first output");
+        vkt_begin_forward();CHECK(step(0,1,second,w,&b)<2e-3,"LRU mixed output");
+        CHECK(vkt_resident(0,0) && vkt_resident(0,2) && !vkt_resident(0,1),
+              "LRU keeps active expert and replaces older resident");
+        vkt_shutdown();
+    }
+    model_free();unsetenv("COLI_VK_TIER_POLICY");unsetenv("COLI_VK_TIER_SYNC");
+}
 int main(int argc, char **argv) {
     char buf[1024];
     const char *spv = argc > 1 ? argv[1] : coli_vk_shader_path(buf, sizeof buf);
@@ -920,6 +1013,11 @@ int main(int argc, char **argv) {
     printf("extra:\n"); extra();
     printf("DeepSeek V4:\n"); v4_act();
     printf("stream:\n"); stream();
+    printf("cold split native:\n");split_decode("native");
+    if(getenv("COLI_MOJO_DISPATCH")){printf("cold split Mojo:\n");split_decode("mojo");}
+    printf("retained cold fills:\n");split_warm("native");
+    if(getenv("COLI_MOJO_DISPATCH"))split_warm("mojo");
+    printf("LRU:\n");lru_rotate();
     ColiVkPoolStats ps, px; coli_vk_pool_stats(1, &ps); coli_vk_pool_stats(4, &px);
     CHECK(ps.live == 0 && px.live == 0, "%d + %d tier ranges still live after every shutdown", ps.live, px.live);
     coli_vk_shutdown();   /* with staged uploads: where the experts were ("[VK] memory at exit") */
