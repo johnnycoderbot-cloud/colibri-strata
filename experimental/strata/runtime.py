@@ -1,8 +1,9 @@
 """Optional accelerator runners for independent trained future-token heads.
 
 CSQ1 INT4/INT8/INT16 storage is decoded into F32 tensors for compatibility.
-These graphs perform F32 compute; they are not native integer accelerator
-kernels or model-engine integration. ONNX execution is accepted only when a
+These graphs use F32 tensors; hardware kernel precision depends on the backend
+and is reported separately. They are not native integer accelerator kernels
+or model-engine integration. ONNX execution is accepted only when a
 bounded node profile proves that the requested provider executed the compute.
 JAX explicitly places/jits on the requested available platform and verifies
 the output device. CPU, GPU, NPU, and TPU availability are distinct outcomes.

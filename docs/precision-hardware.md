@@ -95,8 +95,8 @@ GPUDirect Storage, a durability certification, or a storage-throughput benchmark
 `aipu_check.py` accepts explicit existing SDK Python/runtime/device paths and
 a precompiled model.json. It invokes the SDK with UTF-8 and a bounded timeout,
 checks every golden frame, and propagates the actual SDK exit status. It does not
-install/reset the device, flash firmware, or change power settings. On Windows,
-AIPU inference is native; model compilation runs on Linux/WSL. A head-bank ONNX
+install/reset the device, flash firmware, or change power settings. For the locally
+tested SDK, inference is native Windows and compilation runs on Linux/WSL. A head-bank ONNX
 artifact still needs appropriate calibration, vendor compilation, placement
 inspection and real head-output validation before use on AIPU.
 The adapter receives its installed SDK `module:function` entry and device-directory
