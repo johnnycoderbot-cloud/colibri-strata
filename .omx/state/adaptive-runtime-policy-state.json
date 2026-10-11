@@ -1,8 +1,8 @@
 {
   "phase": "adaptive-runtime-policy",
-  "active": true,
-  "status": "verified_ready_to_publish",
-  "complete": false,
+  "active": false,
+  "status": "complete",
+  "complete": true,
   "owner": "/root (direct serial)",
   "objective": "native reusable state/bandwidth/latency mapping across storage and all compute classes",
   "implementation": [
@@ -29,6 +29,7 @@
     "review": "approved direct serial source review"
   },
   "runtime_wiring": "not yet wired to ordinary CLI or Mojo backend",
-  "next_gate": "publish verified policy and architecture; then obtain actual SDK/profile provider for real integration",
-  "review": "approved direct serial source review"
+  "next_gate": "Actual backend/profile-provider wiring and hardware comparisons remain separate incomplete work.",
+  "review": "approved direct serial source review",
+  "published_commit": "01afb5c2306dc3806cfbb45852f6dfbd6189af05"
 }
