@@ -362,6 +362,8 @@ class GraphEngine:
         if adapter_factory is None:
             from stream_models import make_adapter
             adapter_factory = make_adapter
+            manifest = copy.deepcopy(manifest)
+            manifest["_native_memory_budget"] = memory_budget_bytes
         if not callable(adapter_factory):
             raise ValueError("adapter_factory must be callable")
         adapter = adapter_factory(copy.deepcopy(manifest), root, device)
@@ -421,8 +423,12 @@ class GraphEngine:
             validate_wav(payload, max_audio_seconds=options.get("max_audio_seconds", 30),
                          max_bytes=self._manifest["max_input_bytes"])
         else:
-            validate_png(payload, max_output_pixels=options.get("max_output_pixels", 5592405),
-                         scale=options.get("scale", 4), max_bytes=self._manifest["max_input_bytes"])
+            native_validation = getattr(self._adapter, "validate_media", None)
+            if self._backend_info.get("inference_runtime") == "native-c" and callable(native_validation):
+                native_validation(payload, kind)
+            else:
+                validate_png(payload, max_output_pixels=options.get("max_output_pixels", 5592405),
+                             scale=options.get("scale", 4), max_bytes=self._manifest["max_input_bytes"])
 
     @staticmethod
     def _audio_options(task, language):

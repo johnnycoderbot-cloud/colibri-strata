@@ -18,6 +18,10 @@ desktop/src-tauri/gen/
 # binari compilati (si rigenerano con make / coli build)
 c/colibri
 c/colibri.exe
+c/native_graph
+c/native_graph.exe
+c/native_graph*.d
+c/native_media.d
 c/glm
 c/glm.exe
 c/olmoe

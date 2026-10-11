@@ -1,0 +1,18 @@
+{
+  "phase": "native-graph-port",
+  "active": true,
+  "status": "verified_ready_to_publish",
+  "runtime": "native-in-session",
+  "objective": "Port text, speech/English translation and trained upscaling inference to a native C process using SDK C APIs",
+  "owner": "/root",
+  "owners": {
+    "/root/architecture": "SDK and compiler discovery",
+    "/root/parallel_heads": "C native SDK backend",
+    "/root/memory_primitives": "C media tensor helpers",
+    "/root": "native engine transport, control-plane wiring, integration and publication"
+  },
+  "next_gate": "publish native C port and evidence",
+  "complete": false,
+  "qualification": ".omx/research/native-graph-qualification.json",
+  "review": "approved; native backend and integration independent reviews"
+}

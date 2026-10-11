@@ -1,0 +1,652 @@
+{
+  "schema": "colibri.native-graph-functional-replay/v1",
+  "purpose": "functional C production routes; no throughput/power claim",
+  "native_binary_sha256": "9034f4fff7f552ffe207898659482c5535897cb15106aaeb3eda8f5ef04ee959",
+  "python_ml_import_guard": [
+    "PIL",
+    "jax",
+    "numpy",
+    "onnxruntime",
+    "openvino",
+    "openvino_genai",
+    "openvino_tokenizers",
+    "torch"
+  ],
+  "python_ml_modules_loaded": [],
+  "fixtures": {
+    "audio_sha256": "13f2ca57b38d7feda51a0e623612cefffe67238c69b1fbd49fef6ee7e0209ec0",
+    "image_sha256": "667e0f9ba71105bf640eb3b385039e6122ccca07c9810511f9d7ee36bba2c7f4"
+  },
+  "model_manifest_sha256": {
+    "text": "08a0f7cda61b9e2bb3046b5b773dc7188ae5f7bfb62361d7ae02c72f5c7a59cd",
+    "speech": "850629a09f26fa5c19291d41746612735461bef2b2590670d8e608bf32b79506",
+    "camera": "5f77fce5fd8b17835dbbe2967c3b778e38ada16c829a68ca9340f879c9087c3e"
+  },
+  "runs": [
+    {
+      "schema": "colibri.actual-gateway-replay/v1",
+      "model": "colibri-text_graph",
+      "device": "CPU",
+      "endpoint": "/v1/chat/completions",
+      "http_status": 200,
+      "elapsed_seconds": 0.5541927000158466,
+      "auth_refusal_passed": true,
+      "runtime": {
+        "device": "CPU",
+        "compiled_device": "CPU",
+        "execution_devices_verified": false,
+        "inference_runtime": "native-c",
+        "backend": "openvino-native-c",
+        "runtime_precision": "unknown",
+        "model_id": "colibri-text_graph",
+        "family": "text_graph",
+        "lr_width": 0,
+        "lr_height": 0,
+        "scale": 0,
+        "prompt_token_limit": 2048,
+        "context_token_limit": 4096,
+        "memory_estimates_only": true,
+        "base_estimated_bytes": 939524096,
+        "adapter": "text_openvino",
+        "requested_device": "CPU",
+        "device_source": "native-sdk",
+        "precision": "int4",
+        "stateful_chat": false,
+        "executed_device": null,
+        "runtime_kind": "graph",
+        "modality": "text",
+        "max_input_bytes": 65536,
+        "max_output_bytes": 1048576,
+        "memory_budget_bytes": 1073741824,
+        "asset_bytes": 385381841,
+        "session_estimated_bytes": 0,
+        "active_sessions": 0,
+        "max_sessions": 8,
+        "closing": false,
+        "closed": false
+      },
+      "result": {
+        "id": "chatcmpl_f98c4e4e272540cbac80f3382c0091d7",
+        "object": "chat.completion",
+        "created": 1791731917,
+        "model": "colibri-text_graph",
+        "choices": [
+          {
+            "index": 0,
+            "finish_reason": null,
+            "message": {
+              "role": "assistant",
+              "content": "Paris"
+            }
+          }
+        ],
+        "runtime": {
+          "text": "Paris",
+          "prompt_token_count": 31,
+          "stateful_chat": false,
+          "segments": [],
+          "inference_runtime": "native-c",
+          "device": "CPU",
+          "execution_devices_verified": false,
+          "backend": "openvino-native-c",
+          "family": "text_graph",
+          "model_id": "colibri-text_graph",
+          "compiled_device": "CPU",
+          "requested_device": "CPU",
+          "executed_device": null
+        }
+      },
+      "workload": "text",
+      "native_process_close_passed": true
+    },
+    {
+      "schema": "colibri.actual-gateway-replay/v1",
+      "model": "colibri-speech",
+      "device": "CPU",
+      "endpoint": "/v1/audio/transcriptions",
+      "http_status": 200,
+      "elapsed_seconds": 0.21865349999279715,
+      "auth_refusal_passed": true,
+      "runtime": {
+        "device": "CPU",
+        "compiled_device": "CPU",
+        "execution_devices_verified": false,
+        "inference_runtime": "native-c",
+        "backend": "openvino-native-c",
+        "runtime_precision": "unknown",
+        "model_id": "colibri-speech",
+        "family": "speech",
+        "lr_width": 0,
+        "lr_height": 0,
+        "scale": 0,
+        "prompt_token_limit": 2048,
+        "context_token_limit": 4096,
+        "memory_estimates_only": true,
+        "base_estimated_bytes": 402653184,
+        "adapter": "whisper_openvino",
+        "requested_device": "CPU",
+        "device_source": "native-sdk",
+        "precision": "int8",
+        "stateful_chat": false,
+        "executed_device": null,
+        "runtime_kind": "graph",
+        "modality": "audio",
+        "max_input_bytes": 2097152,
+        "max_output_bytes": 1048576,
+        "memory_budget_bytes": 1073741824,
+        "asset_bytes": 48792323,
+        "session_estimated_bytes": 0,
+        "active_sessions": 0,
+        "max_sessions": 8,
+        "closing": false,
+        "closed": false
+      },
+      "result": {
+        "text": " And so my fellow Americans ask not what your country can do for you ask what you can do for your country.",
+        "prompt_token_count": 0,
+        "stateful_chat": false,
+        "segments": [],
+        "inference_runtime": "native-c",
+        "device": "CPU",
+        "execution_devices_verified": false,
+        "backend": "openvino-native-c",
+        "family": "speech",
+        "model_id": "colibri-speech",
+        "compiled_device": "CPU",
+        "duration": 11.0,
+        "task": "transcribe",
+        "language": "en",
+        "target_language": "en",
+        "requested_device": "CPU",
+        "executed_device": null
+      },
+      "workload": "speech",
+      "native_process_close_passed": true
+    },
+    {
+      "schema": "colibri.actual-gateway-replay/v1",
+      "model": "colibri-camera_upscale",
+      "device": "CPU",
+      "endpoint": "/v1/camera/upscale",
+      "http_status": 200,
+      "elapsed_seconds": 0.18940740000107326,
+      "auth_refusal_passed": true,
+      "runtime": {
+        "device": "CPU",
+        "compiled_device": "CPU",
+        "execution_devices_verified": true,
+        "inference_runtime": "native-c",
+        "backend": "openvino-native-c",
+        "runtime_precision": "f32",
+        "model_id": "colibri-camera_upscale",
+        "family": "camera_upscale",
+        "lr_width": 480,
+        "lr_height": 270,
+        "scale": 4,
+        "prompt_token_limit": 2048,
+        "context_token_limit": 4096,
+        "memory_estimates_only": true,
+        "base_estimated_bytes": 201326592,
+        "adapter": "super_resolution_openvino",
+        "requested_device": "CPU",
+        "device_source": "native-sdk",
+        "precision": "fp16",
+        "stateful_chat": false,
+        "executed_device": "CPU",
+        "runtime_kind": "graph",
+        "modality": "camera",
+        "max_input_bytes": 4194304,
+        "max_output_bytes": 33554432,
+        "memory_budget_bytes": 1073741824,
+        "asset_bytes": 151237,
+        "session_estimated_bytes": 0,
+        "active_sessions": 0,
+        "max_sessions": 8,
+        "closing": false,
+        "closed": false
+      },
+      "result": {
+        "width": 960,
+        "height": 540,
+        "scale": 4,
+        "inference_runtime": "native-c",
+        "device": "CPU",
+        "execution_devices_verified": true,
+        "backend": "openvino-native-c",
+        "family": "camera_upscale",
+        "model_id": "colibri-camera_upscale",
+        "compiled_device": "CPU",
+        "requested_device": "CPU",
+        "executed_device": "CPU"
+      },
+      "workload": "camera",
+      "native_process_close_passed": true
+    },
+    {
+      "schema": "colibri.actual-gateway-replay/v1",
+      "model": "colibri-text_graph",
+      "device": "GPU",
+      "endpoint": "/v1/chat/completions",
+      "http_status": 200,
+      "elapsed_seconds": 0.19016289999126457,
+      "auth_refusal_passed": true,
+      "runtime": {
+        "device": "GPU",
+        "compiled_device": "GPU",
+        "execution_devices_verified": false,
+        "inference_runtime": "native-c",
+        "backend": "openvino-native-c",
+        "runtime_precision": "unknown",
+        "model_id": "colibri-text_graph",
+        "family": "text_graph",
+        "lr_width": 0,
+        "lr_height": 0,
+        "scale": 0,
+        "prompt_token_limit": 2048,
+        "context_token_limit": 4096,
+        "memory_estimates_only": true,
+        "base_estimated_bytes": 939524096,
+        "adapter": "text_openvino",
+        "requested_device": "GPU",
+        "device_source": "native-sdk",
+        "precision": "int4",
+        "stateful_chat": false,
+        "executed_device": null,
+        "runtime_kind": "graph",
+        "modality": "text",
+        "max_input_bytes": 65536,
+        "max_output_bytes": 1048576,
+        "memory_budget_bytes": 1073741824,
+        "asset_bytes": 385381841,
+        "session_estimated_bytes": 0,
+        "active_sessions": 0,
+        "max_sessions": 8,
+        "closing": false,
+        "closed": false
+      },
+      "result": {
+        "id": "chatcmpl_f7e1a411441e4453a0e00c66ea6c4e5f",
+        "object": "chat.completion",
+        "created": 1791731925,
+        "model": "colibri-text_graph",
+        "choices": [
+          {
+            "index": 0,
+            "finish_reason": null,
+            "message": {
+              "role": "assistant",
+              "content": "Paris"
+            }
+          }
+        ],
+        "runtime": {
+          "text": "Paris",
+          "prompt_token_count": 31,
+          "stateful_chat": false,
+          "segments": [],
+          "inference_runtime": "native-c",
+          "device": "GPU",
+          "execution_devices_verified": false,
+          "backend": "openvino-native-c",
+          "family": "text_graph",
+          "model_id": "colibri-text_graph",
+          "compiled_device": "GPU",
+          "requested_device": "GPU",
+          "executed_device": null
+        }
+      },
+      "workload": "text",
+      "native_process_close_passed": true
+    },
+    {
+      "schema": "colibri.actual-gateway-replay/v1",
+      "model": "colibri-speech",
+      "device": "GPU",
+      "endpoint": "/v1/audio/transcriptions",
+      "http_status": 200,
+      "elapsed_seconds": 0.5771888000017498,
+      "auth_refusal_passed": true,
+      "runtime": {
+        "device": "GPU",
+        "compiled_device": "GPU",
+        "execution_devices_verified": false,
+        "inference_runtime": "native-c",
+        "backend": "openvino-native-c",
+        "runtime_precision": "unknown",
+        "model_id": "colibri-speech",
+        "family": "speech",
+        "lr_width": 0,
+        "lr_height": 0,
+        "scale": 0,
+        "prompt_token_limit": 2048,
+        "context_token_limit": 4096,
+        "memory_estimates_only": true,
+        "base_estimated_bytes": 402653184,
+        "adapter": "whisper_openvino",
+        "requested_device": "GPU",
+        "device_source": "native-sdk",
+        "precision": "int8",
+        "stateful_chat": false,
+        "executed_device": null,
+        "runtime_kind": "graph",
+        "modality": "audio",
+        "max_input_bytes": 2097152,
+        "max_output_bytes": 1048576,
+        "memory_budget_bytes": 1073741824,
+        "asset_bytes": 48792323,
+        "session_estimated_bytes": 0,
+        "active_sessions": 0,
+        "max_sessions": 8,
+        "closing": false,
+        "closed": false
+      },
+      "result": {
+        "text": " And so my fellow Americans ask not what your country can do for you ask what you can do for your country.",
+        "prompt_token_count": 0,
+        "stateful_chat": false,
+        "segments": [],
+        "inference_runtime": "native-c",
+        "device": "GPU",
+        "execution_devices_verified": false,
+        "backend": "openvino-native-c",
+        "family": "speech",
+        "model_id": "colibri-speech",
+        "compiled_device": "GPU",
+        "duration": 11.0,
+        "task": "transcribe",
+        "language": "en",
+        "target_language": "en",
+        "requested_device": "GPU",
+        "executed_device": null
+      },
+      "workload": "speech",
+      "native_process_close_passed": true
+    },
+    {
+      "schema": "colibri.actual-gateway-replay/v1",
+      "model": "colibri-camera_upscale",
+      "device": "GPU",
+      "endpoint": "/v1/camera/upscale",
+      "http_status": 200,
+      "elapsed_seconds": 0.1735921000072267,
+      "auth_refusal_passed": true,
+      "runtime": {
+        "device": "GPU.0",
+        "compiled_device": "GPU.0",
+        "execution_devices_verified": true,
+        "inference_runtime": "native-c",
+        "backend": "openvino-native-c",
+        "runtime_precision": "f32",
+        "model_id": "colibri-camera_upscale",
+        "family": "camera_upscale",
+        "lr_width": 480,
+        "lr_height": 270,
+        "scale": 4,
+        "prompt_token_limit": 2048,
+        "context_token_limit": 4096,
+        "memory_estimates_only": true,
+        "base_estimated_bytes": 201326592,
+        "adapter": "super_resolution_openvino",
+        "requested_device": "GPU",
+        "device_source": "native-sdk",
+        "precision": "fp16",
+        "stateful_chat": false,
+        "executed_device": "GPU.0",
+        "runtime_kind": "graph",
+        "modality": "camera",
+        "max_input_bytes": 4194304,
+        "max_output_bytes": 33554432,
+        "memory_budget_bytes": 1073741824,
+        "asset_bytes": 151237,
+        "session_estimated_bytes": 0,
+        "active_sessions": 0,
+        "max_sessions": 8,
+        "closing": false,
+        "closed": false
+      },
+      "result": {
+        "width": 960,
+        "height": 540,
+        "scale": 4,
+        "inference_runtime": "native-c",
+        "device": "GPU.0",
+        "execution_devices_verified": true,
+        "backend": "openvino-native-c",
+        "family": "camera_upscale",
+        "model_id": "colibri-camera_upscale",
+        "compiled_device": "GPU.0",
+        "requested_device": "GPU",
+        "executed_device": "GPU.0"
+      },
+      "workload": "camera",
+      "native_process_close_passed": true
+    }
+  ],
+  "sdk": {
+    "genai_version": "2026.4.1.0",
+    "runtime_version": "2026.4.1-22982-e213a147257-releases/2026/4",
+    "source_commit": "ab01d1771e4adaa0e1e08e9d630def170572506c",
+    "archive_sha256": "437dc85e0fa60d2231b28f323c9b06ee27bc5eb4d3285fb266f9dd5fb012d0b8",
+    "extended_c_wrapper_sha256": "aa92f706b365d1ac5cf1e1298aafbf6d80fbc5d843563572fbe90e722b9c9f46",
+    "added_c_exports": 3,
+    "final_patch_sha256": "d60ca4483d76434644a36d715211886b5784f9fcad9d8168c001707db849e3ab",
+    "model_paths": "UTF8 filesystem::u8path in official C wrapper"
+  },
+  "host": {
+    "os": "Windows x86-64",
+    "cpu": "Intel Core i9-12950HX",
+    "gpu": "Intel UHD Graphics",
+    "compiler": "MSVC 19.44.35224 /TC /std:c17 /O2"
+  },
+  "offline_reference_parity": {
+    "schema": "colibri.native-graph-reference-parity/v1",
+    "offline_oracle_only": true,
+    "camera": [
+      {
+        "input": [
+          17,
+          13
+        ],
+        "output": [
+          68,
+          52
+        ],
+        "max_pixel_difference": 0,
+        "mean_pixel_difference": 0.0,
+        "alpha_exact": true,
+        "learned_model": "SISR1032",
+        "precision_hint": "f32"
+      },
+      {
+        "input": [
+          1,
+          9
+        ],
+        "output": [
+          4,
+          36
+        ],
+        "max_pixel_difference": 0,
+        "mean_pixel_difference": 0.0,
+        "alpha_exact": true,
+        "learned_model": "SISR1032",
+        "precision_hint": "f32"
+      },
+      {
+        "input": [
+          450,
+          3
+        ],
+        "output": [
+          1800,
+          12
+        ],
+        "max_pixel_difference": 0,
+        "mean_pixel_difference": 0.0,
+        "alpha_exact": true,
+        "learned_model": "SISR1032",
+        "precision_hint": "f32"
+      }
+    ],
+    "text": {
+      "native_prompt_tokens": 22,
+      "sdk_prompt_tokens": 22,
+      "template_applied_once": true,
+      "generated_text_equal": true,
+      "text": "Two plus two equals four."
+    },
+    "speech_translation": {
+      "task": "translate",
+      "target_language": "en",
+      "text": " And so my fellow Americans ask not what your country can do for you ask what you can do for your country.",
+      "device": "GPU",
+      "execution_devices_verified": false,
+      "clean_close": true,
+      "fixture_language": "English; this does not qualify foreign-language accuracy"
+    }
+  },
+  "video_replay": {
+    "schema": "colibri.native-trained-video-replay/v1",
+    "inference_runtime": "native-c",
+    "selected_and_verified_device": "GPU.0",
+    "source": {
+      "sha256": "915efae86571ac814b4005517b7620dfa1eb666cecd26d462b75d733cafa8808",
+      "frames": [
+        {
+          "width": 64,
+          "height": 48,
+          "timestamp_seconds": 0.0
+        },
+        {
+          "width": 64,
+          "height": 48,
+          "timestamp_seconds": 0.2
+        },
+        {
+          "width": 64,
+          "height": 48,
+          "timestamp_seconds": 0.65
+        }
+      ],
+      "audio_streams": 1,
+      "audio_packets": 17,
+      "audio_payload_sha256": "eeea393c85a77865d2280e6d01aaa3623a1ea4db286baccd09b6554bc3f71829"
+    },
+    "output": {
+      "sha256": "beb0cd6c96ea41f0222899565fdc7c9c224a274155da022d3fa4c9e51fec85b2",
+      "frames": [
+        {
+          "width": 256,
+          "height": 192,
+          "timestamp_seconds": 0.0
+        },
+        {
+          "width": 256,
+          "height": 192,
+          "timestamp_seconds": 0.2
+        },
+        {
+          "width": 256,
+          "height": 192,
+          "timestamp_seconds": 0.65
+        }
+      ],
+      "audio_streams": 1,
+      "audio_packets": 17,
+      "audio_payload_sha256": "eeea393c85a77865d2280e6d01aaa3623a1ea4db286baccd09b6554bc3f71829"
+    },
+    "audio_payload_exact": true,
+    "timestamps_within_90000_tick": true,
+    "all_frames_trained_4x": true
+  },
+  "startup_refusals": [
+    {
+      "case": "unavailable NPU",
+      "refused": true,
+      "no_cpu_fallback": true,
+      "diagnostic": "native graph process exited: native_graph: requested native device NPU is unavailable\r\n"
+    },
+    {
+      "case": "original C-wrapper missing required exports",
+      "refused": true,
+      "no_cpu_fallback": true,
+      "diagnostic": "native graph process exited: native_graph: native C SDK component lacks ov_genai_llm_pipeline_render_chat_template\r\n"
+    },
+    {
+      "case": "missing native SDK component",
+      "refused": true,
+      "no_cpu_fallback": true,
+      "diagnostic": "native graph process exited: native_graph: cannot load native C SDK library (Windows error 126)\r\n"
+    }
+  ],
+  "verification": {
+    "windows_native_c_contracts": "media/backend/225 manifest checks passed",
+    "linux_native_c_contracts": "media/backend/233 manifest checks passed",
+    "client_tests": 20,
+    "png_process_tests": 7,
+    "png_asan_ubsan": "7 passed with leak detection",
+    "runtime_tests": 28,
+    "runtime_windows_skips": [
+      "FIFO needs POSIX"
+    ],
+    "gateway_tests": 17,
+    "media_cli_tests": 6,
+    "offline_reference_model_tests": 13,
+    "family_registry_tests": 59,
+    "install_closure_tests": 2,
+    "install_windows_skips": [
+      "symlink privileges"
+    ],
+    "http_framing_tests": 8,
+    "clean_ownership_tests": 7,
+    "generated_dependency_tests": 8
+  },
+  "limits": [
+    "Functional native port evidence, not throughput or power benchmarking.",
+    "Text and speech use explicit native constructor selection; SDK compiled-node placement is not exposed.",
+    "Image/video CPU/GPU execution uses verified core EXECUTION_DEVICES.",
+    "English fixture qualifies translation route, not foreign-language accuracy.",
+    "Linux C build/contracts pass; custom SDK wrapper real-model qualification is Windows only.",
+    "NPU/TPU/AIPU physical full-model execution and broader native Strata acceleration remain incomplete.",
+    "No camera or microphone was opened."
+  ],
+  "source_hash_policy": "SHA256 of qualified Windows workspace source bytes; Git checkout line endings may differ.",
+  "unicode_replay": [
+    {
+      "workload": "text",
+      "unicode_model_directory": true,
+      "unicode_core_and_genai_environment_paths": true,
+      "native_inference": true,
+      "text": "Two plus two equals four.",
+      "clean_close": true
+    },
+    {
+      "workload": "speech",
+      "unicode_model_directory": true,
+      "unicode_core_and_genai_environment_paths": true,
+      "native_inference": true,
+      "text": " And so my fellow Americans ask not what your country can do for you ask what you can do for your country.",
+      "clean_close": true
+    }
+  ],
+  "unicode_sr_replay": {
+    "unicode_model_path": true,
+    "native_cpu_inference": true,
+    "output": [
+      960,
+      540
+    ]
+  },
+  "source_sha256": {
+    "c/native_graph.py": "f19c5cc8ddf33c631a4f9043c05fbb06055feb92046b568c93c69f4939b2ef4c",
+    "c/native_graph_backend.c": "58565399c4b2524aedbcd65f066bd99d0cda1cd9566ee90fd32f2f22795d8816",
+    "c/native_graph_backend.h": "e1e666f9a42034d44656f8ed38e3c3e37b31e24c5af45e8b2fa8c06f5074bd38",
+    "c/native_graph_main.c": "8f1495895833b893882cf8a14428a88a07eef619b4365584345780db2b57e062",
+    "c/native_graph_manifest.c": "f763b7f7c9e7b9b56dbc420371286941b41e5c8b69fa5d55919bba7b925d4523",
+    "c/native_graph_manifest.h": "3eaabf105ebe2b7701825f7badd648ec6c6cb44aecba5199c74cb33b7914d5c2",
+    "c/native_media.c": "1b99838869babdc2b15ff87508a9b6297ec4d87dfd94b5c9ee2504199560aef5",
+    "c/native_media.h": "343ca4d2546803789ab160b2015c2e1359bcb86bed420c4a63afbac7d7babfd4",
+    "c/stream_models.py": "484c03e27a7b575cff1a9702efefd490eefe840cfc9253c7a3079b4efc936105",
+    "c/stream_runtime.py": "59c967c688b6ffc3adb633e3a2fe2b3d4428bfb326b2f2d8e78022c27a31c3cc"
+  }
+}

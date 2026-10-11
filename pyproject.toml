@@ -24,10 +24,14 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-runtime = [
+graph-reference = [
     "openvino>=2026.4,<2027",
     "openvino-genai>=2026.4,<2027",
     "openvino-tokenizers>=2026.4,<2027",
+    "numpy>=1.26,<2",
+    "Pillow>=10,<13",
+]
+runtime = [
     "numpy>=1.26,<2",
     "Pillow>=10,<13",
     "huggingface-hub>=0.27,<2",

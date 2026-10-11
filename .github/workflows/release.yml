@@ -95,7 +95,7 @@ jobs:
       - name: Build engines
         run: |
           cd c
-          for t in colibri glm53 inkling kimi_k3 olmoe qwen36 qwen38 deepseek_v41 mimo qwenimage laya gliner_decide; do
+          for t in colibri native_graph glm53 inkling kimi_k3 olmoe qwen36 qwen38 deepseek_v41 mimo qwenimage laya gliner_decide; do
             extra=""
             case " ${{ matrix.metal }} " in *" $t "*) extra="METAL=1" ;; esac
             make $t ${{ matrix.make_args }} $extra
@@ -160,6 +160,7 @@ jobs:
           # with no platform gate, so every archive can carry it.
           cp c/qwen36${{ matrix.ext }} dist/qwen36${{ matrix.ext }}
           cp c/qwen38${{ matrix.ext }} dist/qwen38${{ matrix.ext }}
+          cp c/native_graph${{ matrix.ext }} dist/native_graph${{ matrix.ext }}
           cp c/qwenimage${{ matrix.ext }} dist/qwenimage${{ matrix.ext }}
           cp c/deepseek_v41${{ matrix.ext }} dist/deepseek_v41${{ matrix.ext }}
           cp c/mimo${{ matrix.ext }} dist/mimo${{ matrix.ext }}
@@ -181,6 +182,7 @@ jobs:
           # it. Without this the engine is in the archive but `coli chat` still cannot
           # run it -- the second half of #720.
           mkdir -p dist/tools
+          cp c/tools/build_native_genai_c.ps1 c/tools/native_genai_c_apply_template.patch c/tools/native_genai_c_source_manifest.json dist/tools/
           cp c/tools/k3_tokenizer.py dist/tools/
           # check_ablate_evidence.py verifies the ABLATE evidence that eval_glm.py
           # (packaged above) produces. Nothing in the code names it -- its caller is a

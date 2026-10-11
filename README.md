@@ -51,7 +51,7 @@ Included now:
   refusal and profiling; physical Intel GPU, AIPU vendor-artifact and NVMe checks.
   See the [precision/hardware matrix](docs/precision-hardware.md) for exact limits.
 - Native OpenVINO CPU/GPU/NPU head execution with strict device-placement checks.
-- Production graph families wired into `coli` and the existing gateway: compact
+- Production graph families use a persistent native C engine through SDK C APIs:
   text inference, English recognition/translation, and trained 4× image, video and
   explicit camera upscaling. OpenVINO CPU/GPU/compatible NPU adapters; full-model
   TPU/AIPU adapters still need implementation and hardware qualification.
@@ -72,6 +72,7 @@ make -C c strata-native-check   # native bank, CPU kernels, identity/protocol te
 [Benchmark protocol](docs/strata-benchmarks.md) ·
 [Integration roadmap](docs/strata-roadmap.md)
 · [Streaming runtime expansion](docs/runtime-expansion.md)
+· [Native C graph engine and SDK setup](docs/native-graph.md)
 
 Colibri's Apache-2.0 license and upstream history are retained. The implementation
 below is original; no Strata source or weights were copied. Strata is credited for

@@ -1,0 +1,78 @@
+{
+  "sources": [
+    {
+      "path": "src/c/include/openvino/genai/c/chat_history.h",
+      "sha": "5cf90708596d26ee8e6f7730fb61a70c23a5043a"
+    },
+    {
+      "path": "src/c/include/openvino/genai/c/generation_config.h",
+      "sha": "33942c88ea36a94bbeef93bf1e835089791590e4"
+    },
+    {
+      "path": "src/c/include/openvino/genai/c/json_container.h",
+      "sha": "d4da1cfc639da4b3124bce60389da27a5cc230b1"
+    },
+    {
+      "path": "src/c/include/openvino/genai/c/llm_pipeline.h",
+      "sha": "3e218db91cdaa56a994686396564237eb3ae0962"
+    },
+    {
+      "path": "src/c/include/openvino/genai/c/perf_metrics.h",
+      "sha": "b5f2b71a09153500889b34b619b8bd8737e7aa13"
+    },
+    {
+      "path": "src/c/include/openvino/genai/c/visibility.h",
+      "sha": "ad4b92e516c66347226d79a049aa0ec7386e228b"
+    },
+    {
+      "path": "src/c/include/openvino/genai/c/vlm_pipeline.h",
+      "sha": "11e60c6e847b290505e80cfca7f428c389ac6004"
+    },
+    {
+      "path": "src/c/include/openvino/genai/c/whisper_generation_config.h",
+      "sha": "45137449a0ce0329df0f7858cb6237ab94bb7a95"
+    },
+    {
+      "path": "src/c/include/openvino/genai/c/whisper_pipeline.h",
+      "sha": "32beebf4d885345c31d5803b0724fd5b3cd8215e"
+    },
+    {
+      "path": "src/c/src/chat_history.cpp",
+      "sha": "6d5c28a07399ae57fb6454884150ac7d6b0a5499"
+    },
+    {
+      "path": "src/c/src/generation_config.cpp",
+      "sha": "f827257a133013141a7f9abd76f44780b49c603f"
+    },
+    {
+      "path": "src/c/src/json_container.cpp",
+      "sha": "8b67a6c17d0af9d7a25561e84edd4878275172a4"
+    },
+    {
+      "path": "src/c/src/llm_pipeline.cpp",
+      "sha": "c9c2edfd82fd42fccec6738d914c401cdc73a514"
+    },
+    {
+      "path": "src/c/src/perf_metrics.cpp",
+      "sha": "8d71fa2e2e9ab7c30726cd2d15e2e7e4d9416841"
+    },
+    {
+      "path": "src/c/src/types_c.h",
+      "sha": "ca0891c52f0f32161f3bc19c377ed9ef1ae3c38e"
+    },
+    {
+      "path": "src/c/src/vlm_pipeline.cpp",
+      "sha": "cb5f8df2a0fcd2f05ddb66b4013f361ba64f7017"
+    },
+    {
+      "path": "src/c/src/whisper_generation_config.cpp",
+      "sha": "7871e1aa845802e0e967af39c86ec1a891c3f73b"
+    },
+    {
+      "path": "src/c/src/whisper_pipeline.cpp",
+      "sha": "3728e37647e1e8e6a9cc62cdf816d7c1ad3f653d"
+    }
+  ],
+  "sdk_version": "2026.4.1.0",
+  "commit": "ab01d1771e4adaa0e1e08e9d630def170572506c"
+}

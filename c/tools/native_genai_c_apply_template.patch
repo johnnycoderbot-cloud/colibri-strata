@@ -1,0 +1,184 @@
+diff --git a/src/c/include/openvino/genai/c/generation_config.h b/src/c/include/openvino/genai/c/generation_config.h
+--- a/src/c/include/openvino/genai/c/generation_config.h
++++ b/src/c/include/openvino/genai/c/generation_config.h
+@@ -54,6 +54,10 @@
+  */
+ OPENVINO_GENAI_C_EXPORTS void ov_genai_generation_config_free(ov_genai_generation_config* handle);
+ 
++/* Set whether the SDK applies its chat template to a non-chat string request. */
++OPENVINO_GENAI_C_EXPORTS ov_status_e ov_genai_generation_config_set_apply_chat_template(
++    ov_genai_generation_config* config, const bool value);
++
+ /**
+  * @brief Set the maximum number of tokens to generate, excluding the number of tokens in the prompt. max_new_tokens
+  * has priority over max_length.
+diff --git a/src/c/include/openvino/genai/c/llm_pipeline.h b/src/c/include/openvino/genai/c/llm_pipeline.h
+--- a/src/c/include/openvino/genai/c/llm_pipeline.h
++++ b/src/c/include/openvino/genai/c/llm_pipeline.h
+@@ -144,6 +144,14 @@
+  * or streamer must be non-NULL.
+  * @return Status code of the operation: OK(0) for success.
+  */
++/* Render the model's public tokenizer template with add_generation_prompt=true.
++ * Accepts 1..64 system/user/assistant UTF-8 messages, at most 1 MiB content total.
++ * output=NULL queries bytes including NUL. A failed call publishes no output/size.
++ * Rendered output is capped at 1 MiB including NUL. No conversation state changes.
++ */
++OPENVINO_GENAI_C_EXPORTS ov_status_e ov_genai_llm_pipeline_render_chat_template(
++    const ov_genai_llm_pipeline* pipe, const char* const* roles, const char* const* contents,
++    const size_t count, char* output, size_t* output_size);
+ OPENVINO_GENAI_C_EXPORTS ov_status_e ov_genai_llm_pipeline_generate(ov_genai_llm_pipeline* pipe,
+                                                                     const char* inputs,
+                                                                     const ov_genai_generation_config* config,
+diff --git a/src/c/include/openvino/genai/c/whisper_generation_config.h b/src/c/include/openvino/genai/c/whisper_generation_config.h
+--- a/src/c/include/openvino/genai/c/whisper_generation_config.h
++++ b/src/c/include/openvino/genai/c/whisper_generation_config.h
+@@ -54,6 +54,9 @@
+  * @param generation_config A pointer to the newly created ov_genai_generation_config.
+  * @return ov_status_e A status code, return OK(0) if successful.
+  */
++/* Set the inherited generation bound on the actual owned Whisper configuration. */
++OPENVINO_GENAI_C_EXPORTS ov_status_e ov_genai_whisper_generation_config_set_max_new_tokens(
++    ov_genai_whisper_generation_config* config, const size_t value);
+ OPENVINO_GENAI_C_EXPORTS ov_status_e
+ ov_genai_whisper_generation_config_get_generation_config(const ov_genai_whisper_generation_config* config,
+                                                          ov_genai_generation_config** generation_config);
+diff --git a/src/c/src/generation_config.cpp b/src/c/src/generation_config.cpp
+--- a/src/c/src/generation_config.cpp
++++ b/src/c/src/generation_config.cpp
+@@ -39,6 +39,17 @@
+     }
+ }
+ 
++ov_status_e ov_genai_generation_config_set_apply_chat_template(ov_genai_generation_config* config, const bool value) {
++    if (!config || !(config->object)) {
++        return ov_status_e::INVALID_C_PARAM;
++    }
++    try {
++        config->object->apply_chat_template = value;
++    } catch (...) {
++        return ov_status_e::UNKNOW_EXCEPTION;
++    }
++    return ov_status_e::OK;
++}
+ ov_status_e ov_genai_generation_config_set_max_new_tokens(ov_genai_generation_config* config, const size_t value) {
+     if (!config || !(config->object)) {
+         return ov_status_e::INVALID_C_PARAM;
+diff --git a/src/c/src/llm_pipeline.cpp b/src/c/src/llm_pipeline.cpp
+--- a/src/c/src/llm_pipeline.cpp
++++ b/src/c/src/llm_pipeline.cpp
+@@ -99,7 +99,7 @@
+        }
+         std::unique_ptr<ov_genai_llm_pipeline> _pipe = std::make_unique<ov_genai_llm_pipeline>();
+         _pipe->object =
+-            std::make_shared<ov::genai::LLMPipeline>(std::filesystem::path(models_path), std::string(device), property);
++            std::make_shared<ov::genai::LLMPipeline>(std::filesystem::u8path(models_path), std::string(device), property);
+         *pipe = _pipe.release();
+     } catch (...) {
+         return ov_status_e::UNKNOW_EXCEPTION;
+@@ -111,6 +111,71 @@
+     if (pipe) {
+         delete pipe;
+     }
++}
++namespace {
++bool colibri_bounded_utf8_size(const char* text, const size_t limit, size_t& length) {
++    if (!text) return false;
++    size_t i = 0;
++    while (i <= limit && text[i]) {
++        const unsigned char lead = static_cast<unsigned char>(text[i]);
++        size_t width;
++        unsigned int value;
++        if (lead < 0x80) { width = 1; value = lead; }
++        else if (lead >= 0xc2 && lead <= 0xdf) { width = 2; value = lead & 0x1f; }
++        else if (lead >= 0xe0 && lead <= 0xef) { width = 3; value = lead & 0x0f; }
++        else if (lead >= 0xf0 && lead <= 0xf4) { width = 4; value = lead & 0x07; }
++        else return false;
++        if (width > limit - i) return false;
++        for (size_t j = 1; j < width; ++j) {
++            const unsigned char byte = static_cast<unsigned char>(text[i + j]);
++            if ((byte & 0xc0) != 0x80) return false;
++            value = (value << 6) | (byte & 0x3f);
++        }
++        if ((width == 3 && value < 0x800) || (width == 4 && value < 0x10000) ||
++            value > 0x10ffff || (value >= 0xd800 && value <= 0xdfff)) return false;
++        i += width;
++    }
++    if (i > limit) return false;
++    length = i;
++    return true;
++}
++}
++
++ov_status_e ov_genai_llm_pipeline_render_chat_template(
++    const ov_genai_llm_pipeline* pipe, const char* const* roles, const char* const* contents,
++    const size_t count, char* output, size_t* output_size) {
++    if (!pipe || !(pipe->object) || !roles || !contents || !output_size || count == 0 || count > 64) {
++        return ov_status_e::INVALID_C_PARAM;
++    }
++    try {
++        const size_t content_limit = 1024 * 1024;
++        size_t total = 0;
++        ov::genai::ChatHistory history;
++        for (size_t i = 0; i < count; ++i) {
++            size_t role_size = 0, content_size = 0;
++            if (!colibri_bounded_utf8_size(roles[i], 16, role_size) ||
++                !colibri_bounded_utf8_size(contents[i], content_limit - total, content_size)) {
++                return ov_status_e::INVALID_C_PARAM;
++            }
++            const std::string role(roles[i], role_size);
++            if (role != "system" && role != "user" && role != "assistant") {
++                return ov_status_e::INVALID_C_PARAM;
++            }
++            total += content_size;
++            history.push_back(ov::AnyMap{{"role", role}, {"content", std::string(contents[i], content_size)}});
++        }
++        const std::string rendered = pipe->object->get_tokenizer().apply_chat_template(history, true);
++        if (rendered.size() >= content_limit || rendered.find('\0') != std::string::npos) {
++            return ov_status_e::OUT_OF_BOUNDS;
++        }
++        const size_t needed = rendered.size() + 1;
++        if (output && *output_size < needed) return ov_status_e::OUT_OF_BOUNDS;
++        if (output) memcpy(output, rendered.c_str(), needed);
++        *output_size = needed;
++    } catch (...) {
++        return ov_status_e::UNKNOW_EXCEPTION;
++    }
++    return ov_status_e::OK;
+ }
+ ov_status_e ov_genai_llm_pipeline_generate(ov_genai_llm_pipeline* pipe,
+                                            const char* inputs,
+diff --git a/src/c/src/whisper_generation_config.cpp b/src/c/src/whisper_generation_config.cpp
+--- a/src/c/src/whisper_generation_config.cpp
++++ b/src/c/src/whisper_generation_config.cpp
+@@ -46,6 +46,18 @@
+     }
+ }
+ 
++ov_status_e ov_genai_whisper_generation_config_set_max_new_tokens(
++    ov_genai_whisper_generation_config* config, const size_t value) {
++    if (!config || !(config->object)) {
++        return ov_status_e::INVALID_C_PARAM;
++    }
++    try {
++        config->object->max_new_tokens = value;
++    } catch (...) {
++        return ov_status_e::UNKNOW_EXCEPTION;
++    }
++    return ov_status_e::OK;
++}
+ ov_status_e ov_genai_whisper_generation_config_get_generation_config(const ov_genai_whisper_generation_config* config,
+                                                                      ov_genai_generation_config** generation_config) {
+     if (!config || !(config->object) || !generation_config) {
+diff --git a/src/c/src/whisper_pipeline.cpp b/src/c/src/whisper_pipeline.cpp
+--- a/src/c/src/whisper_pipeline.cpp
++++ b/src/c/src/whisper_pipeline.cpp
+@@ -276,7 +276,7 @@
+         va_end(args_ptr);
+ 
+         std::unique_ptr<ov_genai_whisper_pipeline> _pipeline = std::make_unique<ov_genai_whisper_pipeline>();
+-        _pipeline->object = std::make_shared<ov::genai::WhisperPipeline>(std::filesystem::path(models_path),
++        _pipeline->object = std::make_shared<ov::genai::WhisperPipeline>(std::filesystem::u8path(models_path),
+                                                                          std::string(device),
+                                                                          property);
+         *pipeline = _pipeline.release();

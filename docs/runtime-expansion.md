@@ -2,8 +2,8 @@
 
 The actual family registry, `coli` CLI and authenticated gateway now load compact
 text, speech and trained 4× upscaling packs. These production adapters are separate
-from experimental future-token heads, which still need per-checkpoint training and
-integration into native decode loops.
+from experimental future-token heads. They now execute in a persistent C engine
+through native SDK C APIs. See [native build and SDK setup](native-graph.md).
 
 | Family | Workload | Implemented backend |
 |---|---|---|
@@ -22,15 +22,15 @@ qualified here. Existing JAX TPU **head** execution and the AIPU compiled-image
 probe are separate diagnostics. Compatible NPU hardware also still needs a
 physical model replay. Do not infer full-model hardware support from those probes.
 
-Windows GenAI **2026.4.1** speech-GPU execution is refused because the qualified
-process produced correct text but hung during interpreter teardown. Speech `AUTO`
-records that restriction and selects an eligible CPU/NPU. GPU text and camera
-models remain enabled. Other speech SDK/platform combinations require their own
-teardown qualification; producing a transcript alone does not pass this gate.
+Native Windows GenAI **2026.4.1** speech replay now generates correct text and
+shuts down cleanly on CPU and GPU. The old Python interpreter teardown failure
+does not gate this C path. Other SDK/platform combinations require qualification.
 
 ## Setup and commands
 
 Use Python 3.12 in a virtual environment from a source checkout:
+Build the native executable and configure the matching native SDK first, following
+the [native setup guide](native-graph.md#build-and-native-sdk).
 
 ```sh
 python -m pip install -r requirements-runtime.txt
@@ -51,8 +51,8 @@ identities, refusing existing output directories. Startup never downloads models
 Packs must remain immutable while in use. Speech uses stateful Whisper tiny INT8;
 text uses Qwen2-0.5B-Instruct INT4; upscaling uses pretrained Open Model Zoo SISR1032
 FP16. Artifact precision does not establish each accelerator kernel's arithmetic.
-FP16 is floating point, not signed INT16. Native launchers import optional model
-libraries only when loading graph packs.
+FP16 is floating point, not signed INT16. The child C process loads native SDK
+libraries; the Python production adapter imports no model bindings.
 
 Camera packs default to an `f32` inference hint. An explicit manifest option
 `options.inference_precision: "f16"` enables a floating-point precision hint on
@@ -69,7 +69,8 @@ VRAM, expert and tuning flags are refused when specified on graph commands.
 
 ## Media and capture
 
-CLI images accept PNG/JPEG/WebP; the API accepts PNG. The trained model receives a
+CLI images accept PNG/JPEG/WebP; the native API accepts 8-bit PNG, including
+palette/alpha and Adam7 inputs. The trained model receives a
 low-resolution BGR tile and bicubic 4× input; results use the **network output**.
 Overlapping padded tiles support arbitrary shapes up to 349,525 source pixels
 (5,592,405 output pixels), including 640×480 camera frames. Larger sources fail;
@@ -137,8 +138,10 @@ are read, verified, compiled and held by the backend; this compact lane does not
 page arbitrary graph layers from SSD into every accelerator. Device selection
 changes eligible compute, not storage policy.
 
-The [physical replay](../.omx/research/stream-model-replay.json) records pinned
-assets, real outputs and warm CPU/GPU timings. Camera execution checks
+The [previous Python reference replay](../.omx/research/stream-model-replay.json)
+records pinned assets and earlier warm timings. The [native port](native-graph.md)
+has separate real-model checks; those older timings do not measure this C port.
+Camera execution checks
 `EXECUTION_DEVICES` before and after inference; CPU/GPU outputs agree within one
 pixel on the fixture. GenAI exposes no compiled-model device property here:
 text/speech report explicit constructor selection with

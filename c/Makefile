@@ -1303,6 +1303,38 @@ ifneq ($(EXE),)
 .PHONY: qwen36
 qwen36: qwen36$(EXE)
 endif
+
+# Optional graph workloads retain a C inference core. Native SDK C libraries
+# are loaded at runtime; compiling this engine requires no Python ML package.
+native-graph: native_graph$(EXE)
+NATIVE_GRAPH_OBJECTS := native_graph_main.o native_graph_backend.o native_graph_manifest.o native_media.o
+native_graph$(EXE): $(NATIVE_GRAPH_OBJECTS)
+	$(CC) $(NATIVE_GRAPH_OBJECTS) -o $@ $(NOCUDA_LDFLAGS) $(if $(IS_WIN),-lshell32,$(if $(DARWIN),,-ldl))
+$(NATIVE_GRAPH_OBJECTS): .build-config
+native_graph_main.o: native_graph_main.c
+	$(CC) $(NOCUDA_CFLAGS) -MMD -MP -c $< -o $@
+native_graph_backend.o: native_graph_backend.c
+	$(CC) $(NOCUDA_CFLAGS) -MMD -MP -c $< -o $@
+native_graph_manifest.o: native_graph_manifest.c
+	$(CC) $(NOCUDA_CFLAGS) -MMD -MP -c $< -o $@
+native_media.o: native_media.c
+	$(CC) $(NOCUDA_CFLAGS) -MMD -MP -c $< -o $@
+
+native-graph-check: tests/test_native_media$(EXE) tests/test_native_graph_backend$(EXE) tests/test_native_graph_manifest$(EXE)
+	./tests/test_native_media$(EXE)
+	./tests/test_native_graph_backend$(EXE)
+	./tests/test_native_graph_manifest$(EXE)
+	$(PYTHON) -m unittest discover -s tests -p test_native_graph_client.py -v
+	$(PYTHON) -m unittest discover -s tests -p test_native_graph_process.py -v
+
+.PHONY: native-graph native-graph-check
+
+tests/test_native_media$(EXE): tests/test_native_media.c native_media.o
+	$(CC) $(NOCUDA_CFLAGS) $< native_media.o -o $@ $(NOCUDA_LDFLAGS)
+tests/test_native_graph_backend$(EXE): tests/test_native_graph_backend.c
+	$(CC) $(NOCUDA_CFLAGS) $< -o $@ $(NOCUDA_LDFLAGS) $(if $(IS_WIN)$(DARWIN),,-ldl)
+tests/test_native_graph_manifest$(EXE): tests/test_native_graph_manifest.c native_graph_manifest.o
+	$(CC) $(NOCUDA_CFLAGS) $< native_graph_manifest.o -o $@ $(NOCUDA_LDFLAGS)
 # Apple METAL=1 engine builds also compile the qpack MLX-affine routed-
 # expert path (activated at runtime by QWEN36_QPACK=<container dir>); other
 # builds keep the inline stubs in qwen36_qpack.h and change nothing.
@@ -2947,7 +2979,7 @@ check:
 	$(MAKE) portable
 	$(MAKE) test
 
-install: colibri$(EXE) glm53$(EXE) inkling$(EXE) kimi_k3$(EXE) olmoe$(EXE) qwen36$(EXE) qwen38$(EXE) deepseek_v41$(EXE) mimo$(EXE) qwenimage$(EXE) laya$(EXE) gliner_decide$(EXE) \
+install: colibri$(EXE) native_graph$(EXE) glm53$(EXE) inkling$(EXE) kimi_k3$(EXE) olmoe$(EXE) qwen36$(EXE) qwen38$(EXE) deepseek_v41$(EXE) mimo$(EXE) qwenimage$(EXE) laya$(EXE) gliner_decide$(EXE) \
 	$(if $(filter 1,$(COLI_V4_SUPPORTED)),deepseek-v4,)
 	$(INSTALL) -d $(DESTDIR)$(BINDIR)
 	$(INSTALL) -d $(DESTDIR)$(LIBEXECDIR)
@@ -2973,7 +3005,10 @@ install: colibri$(EXE) glm53$(EXE) inkling$(EXE) kimi_k3$(EXE) olmoe$(EXE) qwen3
 		image_engine.py term_image.py setup_flow.py setup_hw.py setup_catalog.py \
 		setup_download.py mcp_server.py stream_runtime.py stream_models.py stream_media.py \
 		runtime_cli.py runtime_gateway.py $(DESTDIR)$(LIBEXECDIR)/
+	$(INSTALL) -m 644 native_graph.py $(DESTDIR)$(LIBEXECDIR)/
+	$(INSTALL) -m 755 native_graph$(EXE) $(DESTDIR)$(LIBEXECDIR)/native_graph$(EXE)
 	$(INSTALL) -m 644 tools/*.py $(DESTDIR)$(LIBEXECDIR)/tools/
+	$(INSTALL) -m 644 tools/build_native_genai_c.ps1 tools/native_genai_c_apply_template.patch tools/native_genai_c_source_manifest.json $(DESTDIR)$(LIBEXECDIR)/tools/
 	@# The dashboard is an optional build artifact (cd web && npm run build), so install
 	@# it only when it exists. It goes NEXT TO openai_server.py, which probes ./web/dist.
 	@if [ -f ../web/dist/index.html ]; then \
@@ -3172,7 +3207,7 @@ AUTODEP_OWN_FLAGS = bench_cuda_resident_batch bench_load_tq_peak_rss \
 	bench_indexer_allocations
 ENGINE_RULES := $(foreach n,$(RULE_NAMES),$(if $(findstring /,$(n)),,$(if $(wildcard $(n).c),$(n))))
 AUTODEP_TESTS := $(patsubst tests/%,%,$(filter tests/%,$(RULE_NAMES)))
-AUTODEP_OBJS      = backend_vulkan.o vk_tier.o backend_loader.o backend_xdna.o qwen36_tier.o strata_native_heads.o \
+AUTODEP_OBJS      = $(NATIVE_GRAPH_OBJECTS) backend_vulkan.o vk_tier.o backend_loader.o backend_xdna.o qwen36_tier.o strata_native_heads.o \
 	tests/backend_xdna_lane.o tests/edge_runtime.o tests/edge_runtime_nocuda.o \
 	tests/segment_runtime.o tests/segment_runtime_nocuda.o \
 	tests/segment_conformance_fixtures.o tests/deepseek_v4_native_quant.o \

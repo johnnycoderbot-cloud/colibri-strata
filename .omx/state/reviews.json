@@ -115,5 +115,26 @@
       "this matches window capacity; probability cutoff and narrowed draft vocabulary are separate remaining ports",
       "broader runtime/family/device goal is incomplete"
     ]
+  },
+  {
+    "id": "native-graph-port",
+    "reviewer": "/root/architecture (backend and integration); /root (SDK extension/source/media evidence)",
+    "status": "approved",
+    "scope": "persistent native C text, speech/English translation and trained upscaling; production transport/install/SDK setup",
+    "verification": [
+      "Windows and Linux native C contracts; 20 client and 7 PNG tests",
+      "PNG ASan/UBSan/leak checks; immutable assets and generated dependencies",
+      "six trained CPU/GPU production HTTP replays with Python ML imports blocked",
+      "exact CPU upscaler pixels/alpha, exact native prompt count/text, translation and trained video/audio/timestamp replay"
+    ],
+    "qualification_limits": [
+      "Functional native port evidence, not throughput or power benchmarking.",
+      "Text and speech use explicit native constructor selection; SDK compiled-node placement is not exposed.",
+      "Image/video CPU/GPU execution uses verified core EXECUTION_DEVICES.",
+      "English fixture qualifies translation route, not foreign-language accuracy.",
+      "Linux C build/contracts pass; custom SDK wrapper real-model qualification is Windows only.",
+      "NPU/TPU/AIPU physical full-model execution and broader native Strata acceleration remain incomplete.",
+      "No camera or microphone was opened."
+    ]
   }
 ]

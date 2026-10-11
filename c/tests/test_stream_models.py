@@ -13,7 +13,8 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import stream_media as media
-import stream_models as models
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "experimental" / "strata"))
+import reference_stream_models as models
 
 
 def available(*names):

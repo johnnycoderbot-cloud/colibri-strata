@@ -11,6 +11,8 @@ import shutil
 # Files (relative to c/) to remove if present.
 FILES = [
     "colibri", "colibri.exe",
+    "native_graph", "native_graph.exe",
+    "native_graph_main.o", "native_graph_backend.o", "native_graph_manifest.o", "native_media.o",
     "inkling", "inkling.exe",
     "kimi_k3", "kimi_k3.exe",
     "olmoe", "olmoe.exe",

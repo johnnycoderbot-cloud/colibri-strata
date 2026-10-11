@@ -1,11 +1,9 @@
-# Optional graph workloads. Native Colibri CLI/gateway stays standard-library-only.
-openvino>=2026.4,<2027
-openvino-genai>=2026.4,<2027
-openvino-tokenizers>=2026.4,<2027
-numpy>=1.26,<2
-Pillow>=10,<13
+# Native graph inference uses SDK C libraries and the C executable.
+# These optional packages serve model preparation and capture/container I/O.
 huggingface-hub>=0.27,<2
 # Only explicit microphone/camera/video commands use these packages.
 sounddevice>=0.5,<1
+numpy>=1.26,<2
+Pillow>=10,<13
 opencv-python-headless>=4.10,<4.12
 av>=14,<18
