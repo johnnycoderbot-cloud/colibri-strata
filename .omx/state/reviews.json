@@ -136,5 +136,22 @@
       "NPU/TPU/AIPU physical full-model execution and broader native Strata acceleration remain incomplete.",
       "No camera or microphone was opened."
     ]
+  },
+  {
+    "id": "adaptive-runtime-policy",
+    "reviewer": "/root (direct serial source/contract review)",
+    "status": "approved",
+    "scope": "native per-work-unit measured state/bandwidth/latency mapping; no execution or ownership mutation",
+    "verification": [
+      "78 synthetic routing/ownership/compatibility/memory/deadline/shared-memory/malformed/overflow checks",
+      "Windows MSVC and Linux GCC native builds",
+      "strict compiler, ASan/UBSan/leaks and fast-math checks",
+      "8 generated-dependency tests"
+    ],
+    "qualification_limits": [
+      "not wired into ordinary CLI AUTO or Mojo drivers",
+      "synthetic policy data is not hardware performance evidence",
+      "caller owns exact profile identity, reservations, transfer execution and state commit"
+    ]
   }
 ]

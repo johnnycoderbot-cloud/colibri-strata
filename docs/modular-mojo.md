@@ -1,5 +1,9 @@
 # Modular/Mojo integration boundary
 
+The organizing runtime requirement is
+[state and bandwidth aware inference](adaptive-runtime.md) across SSD, CPU, GPU,
+NPU, TPU and AIPU, with measured per-workload placement.
+
 The user's SSD, CPU, GPU, NPU and AIPU software stack is based on Modular's Mojo.
 That is the declared integration target. The published Colibri fork currently
 uses its existing C engines and a native OpenVINO C-API graph backend; it does

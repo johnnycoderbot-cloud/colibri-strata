@@ -2,7 +2,7 @@
   "phase": "native-throughput",
   "active": false,
   "status": "handoff",
-  "objective": "measurably faster native Colibri inference across all model families and qualified hardware",
+  "objective": "Adaptable native Colibri acceleration across SSD/CPU/GPU/NPU/TPU/AIPU using state- and bandwidth-aware mapping, Strata practices and other qualified inference techniques",
   "first_family": "qwen36 dense CPU MTP qualified; OLMoE CPU cache8/16 prefetch measured",
   "runtime": "direct-serial",
   "owners": {
@@ -44,7 +44,7 @@
     "scope": "CPU only; no new GPU DMA or all-family qualification",
     "default_reason": "user-directed Strata-style three-extra-token window; previous timings retained with explicit settings"
   },
-  "next_implementation": "Locate existing Modular/Mojo native SDK/project and implement its C bridge; then continue actual Strata storage/transfer/family ports and qualification.",
+  "next_implementation": "Connect actual Modular/Mojo native SDK/profile provider and wire this mapping policy to real workloads; continue measured Strata and other inference ports.",
   "graph_port": {
     "status": "published",
     "language": "C17 engine, native C SDK APIs; Python control plane only",
@@ -65,5 +65,23 @@
     "implemented": false,
     "runtime_location": "requested from user; not found in checked checkout/Windows PATH/hardware venv/current Kali WSL",
     "documentation": "docs/modular-mojo.md"
+  },
+  "adaptability": {
+    "policy": "c/runtime_map.h/.c",
+    "status": "portable policy verified; runtime wiring incomplete",
+    "principles": [
+      "state ownership and numerical compatibility",
+      "measured full transfer/queue/compute cost",
+      "explicit storage and shared-memory topology",
+      "per-workload/phase/shape/batch profiles",
+      "deadline, memory, fencing and cancellation contracts",
+      "actual hardware qualification before speed claims"
+    ],
+    "other_inferences": [
+      "speech/translation",
+      "image/video",
+      "encoder/embedding workloads",
+      "other stateful models with compatible adapters"
+    ]
   }
 }

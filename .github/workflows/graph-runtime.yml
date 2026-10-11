@@ -3,9 +3,9 @@ name: Colibri graph runtime
 on:
   push:
     branches: [main, 'codex/**']
-    paths: ['c/*.py', 'c/native_*', 'c/third_party/**', 'c/tools/*native*', 'c/Makefile', 'c/coli', 'c/tests/*native_graph*', 'c/tests/test_native_media.c', 'c/tests/*runtime*', 'c/tests/*stream*', 'experimental/strata/reference_stream_models.py', 'requirements-runtime.txt', 'pyproject.toml', '.github/workflows/release.yml', '.github/workflows/graph-runtime.yml']
+    paths: ['c/*.py', 'c/native_*', 'c/runtime_map.*', 'c/third_party/**', 'c/tools/*native*', 'c/Makefile', 'c/coli', 'c/tests/*native_graph*', 'c/tests/test_native_media.c', 'c/tests/*runtime*', 'c/tests/*stream*', 'experimental/strata/reference_stream_models.py', 'requirements-runtime.txt', 'pyproject.toml', '.github/workflows/release.yml', '.github/workflows/graph-runtime.yml']
   pull_request:
-    paths: ['c/*.py', 'c/native_*', 'c/third_party/**', 'c/tools/*native*', 'c/Makefile', 'c/coli', 'c/tests/*native_graph*', 'c/tests/test_native_media.c', 'c/tests/*runtime*', 'c/tests/*stream*', 'experimental/strata/reference_stream_models.py', 'requirements-runtime.txt', 'pyproject.toml', '.github/workflows/release.yml', '.github/workflows/graph-runtime.yml']
+    paths: ['c/*.py', 'c/native_*', 'c/runtime_map.*', 'c/third_party/**', 'c/tools/*native*', 'c/Makefile', 'c/coli', 'c/tests/*native_graph*', 'c/tests/test_native_media.c', 'c/tests/*runtime*', 'c/tests/*stream*', 'experimental/strata/reference_stream_models.py', 'requirements-runtime.txt', 'pyproject.toml', '.github/workflows/release.yml', '.github/workflows/graph-runtime.yml']
   workflow_dispatch:
 
 permissions:
@@ -31,7 +31,7 @@ jobs:
         run: python -m unittest discover -s tests -p test_native_graph_client.py -v
       - name: Native C media, backend and manifest
         if: runner.os == 'Linux'
-        run: make native-graph native-graph-check
+        run: make native-graph native-graph-check runtime-map-check
       - name: Windows native C executable
         if: runner.os == 'Windows'
         run: python tools/build_native_graph.py --check

@@ -17,7 +17,7 @@ def main(argv=None):
     parser.add_argument("--output", type=Path, default=ROOT / ("native_graph.exe" if os.name == "nt" else "native_graph"))
     parser.add_argument("--cc")
     parser.add_argument("--vcvars", type=Path)
-    parser.add_argument("--test", choices=("media", "backend", "manifest"), help=argparse.SUPPRESS)
+    parser.add_argument("--test", choices=("media", "backend", "manifest", "mapping"), help=argparse.SUPPRESS)
     parser.add_argument("--check", action="store_true", help="also compile and run SDK-free C contract checks")
     parser.add_argument("--sanitize", action="store_true", help="enable GCC/Clang address and undefined-behavior sanitizers")
     args = parser.parse_args(argv)
@@ -29,7 +29,8 @@ def main(argv=None):
     if args.test:
         sources = {"media": ("tests/test_native_media.c", "native_media.c"),
                    "backend": ("tests/test_native_graph_backend.c",),
-                   "manifest": ("tests/test_native_graph_manifest.c", "native_graph_manifest.c")}[args.test]
+                   "manifest": ("tests/test_native_graph_manifest.c", "native_graph_manifest.c"),
+                   "mapping": ("tests/test_runtime_map.c", "runtime_map.c")}[args.test]
     if os.name != "nt":
         compiler = args.cc or os.environ.get("CC") or "cc"
         subprocess.run([compiler, "-std=c17", "-O2", "-Wall", "-Wextra", "-Wno-unused-function",
@@ -79,7 +80,7 @@ def main(argv=None):
     print(str(output).encode(encoding, "backslashreplace").decode(encoding))
     if args.check:
         with tempfile.TemporaryDirectory(prefix="colibri-native-contracts-") as tmp:
-            for name in ("media", "backend", "manifest"):
+            for name in ("media", "backend", "manifest", "mapping"):
                 binary = Path(tmp) / (name + (".exe" if os.name == "nt" else ""))
                 options = ["--test", name, "--output", str(binary)]
                 if args.cc:

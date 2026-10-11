@@ -1329,6 +1329,14 @@ native-graph-check: tests/test_native_media$(EXE) tests/test_native_graph_backen
 
 .PHONY: native-graph native-graph-check
 
+runtime_map.o: runtime_map.c .build-config
+	$(CC) $(NOCUDA_CFLAGS) -MMD -MP -c $< -o $@
+tests/test_runtime_map$(EXE): tests/test_runtime_map.c runtime_map.o
+	$(CC) $(NOCUDA_CFLAGS) $< runtime_map.o -o $@ $(NOCUDA_LDFLAGS)
+runtime-map-check: tests/test_runtime_map$(EXE)
+	./tests/test_runtime_map$(EXE)
+.PHONY: runtime-map-check
+
 tests/test_native_media$(EXE): tests/test_native_media.c native_media.o
 	$(CC) $(NOCUDA_CFLAGS) $< native_media.o -o $@ $(NOCUDA_LDFLAGS)
 tests/test_native_graph_backend$(EXE): tests/test_native_graph_backend.c
@@ -3207,7 +3215,7 @@ AUTODEP_OWN_FLAGS = bench_cuda_resident_batch bench_load_tq_peak_rss \
 	bench_indexer_allocations
 ENGINE_RULES := $(foreach n,$(RULE_NAMES),$(if $(findstring /,$(n)),,$(if $(wildcard $(n).c),$(n))))
 AUTODEP_TESTS := $(patsubst tests/%,%,$(filter tests/%,$(RULE_NAMES)))
-AUTODEP_OBJS      = $(NATIVE_GRAPH_OBJECTS) backend_vulkan.o vk_tier.o backend_loader.o backend_xdna.o qwen36_tier.o strata_native_heads.o \
+AUTODEP_OBJS      = runtime_map.o $(NATIVE_GRAPH_OBJECTS) backend_vulkan.o vk_tier.o backend_loader.o backend_xdna.o qwen36_tier.o strata_native_heads.o \
 	tests/backend_xdna_lane.o tests/edge_runtime.o tests/edge_runtime_nocuda.o \
 	tests/segment_runtime.o tests/segment_runtime_nocuda.o \
 	tests/segment_conformance_fixtures.o tests/deepseek_v4_native_quant.o \

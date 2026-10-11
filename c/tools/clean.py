@@ -13,6 +13,7 @@ FILES = [
     "colibri", "colibri.exe",
     "native_graph", "native_graph.exe",
     "native_graph_main.o", "native_graph_backend.o", "native_graph_manifest.o", "native_media.o",
+    "runtime_map.o",
     "inkling", "inkling.exe",
     "kimi_k3", "kimi_k3.exe",
     "olmoe", "olmoe.exe",

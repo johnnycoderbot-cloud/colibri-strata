@@ -1,0 +1,19 @@
+{
+  "schema": "colibri.native-runtime-map-policy/v1",
+  "source_sha256": {
+    "c/runtime_map.h": "a47ae0980d6bc9130379684f0299fa61166161a594bc71404181b5ae5480dcc7",
+    "c/runtime_map.c": "22de1e3809284adba16641015ac299dade41d5892fdb73f7bd6f817489e237e8",
+    "c/tests/test_runtime_map.c": "5bafdd584df854051ea4e26578abdadb00ae6fe2b98d946fcd3c767ef6eae49d"
+  },
+  "policy_checks": 78,
+  "platform_checks": [
+    "MSVC C17 Windows",
+    "GCC Linux",
+    "ASan+UBSan+leak checks",
+    "GCC O3 fast-math nonfinite/overflow guards"
+  ],
+  "dependency_checks": 8,
+  "profiles": "synthetic fixtures; no hardware speed or placement claim",
+  "runtime_integration": "pending actual backend/profile-provider wiring",
+  "review": "approved direct serial source review"
+}
