@@ -1,0 +1,45 @@
+name: Native Mojo backend
+on:
+  push:
+    branches: [main, 'codex/**']
+    paths: ['c/native_mojo_*', 'c/mojo_*', 'c/coli', 'c/tools/*mojo*', 'c/tests/*mojo*', '.github/workflows/mojo-backend.yml']
+  pull_request:
+    paths: ['c/native_mojo_*', 'c/mojo_*', 'c/coli', 'c/tools/*mojo*', 'c/tests/*mojo*', '.github/workflows/mojo-backend.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-cpu:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: SDK-free launcher and installed closure
+        run: |
+          python -m unittest discover -s c/tests -p test_mojo_cli.py -v
+          python -m unittest discover -s c/tests -p test_install_closure.py -v
+      - name: Pinned native SDK
+        run: python -m pip install max==26.6.0
+      - name: Build native C backend
+        run: python c/tools/build_native_mojo.py
+      - name: Prepare offline graph fixtures
+        run: |
+          python c/tools/prepare_mojo_fixture.py --output outputs-native/mojo-fixtures/f32
+          python c/tools/prepare_mojo_fixture.py --integer-bits 4 --output outputs-native/mojo-fixtures/i4
+          python c/tools/prepare_mojo_fixture.py --integer-bits 8 --output outputs-native/mojo-fixtures/i8
+          python c/tools/prepare_mojo_fixture.py --integer-bits 16 --output outputs-native/mojo-fixtures/i16
+          python c/tools/prepare_mojo_fixture.py --external-weights --output outputs-native/mojo-fixtures/weighted
+      - name: Actual native inference and explicit-device refusal
+        run: python c/tools/check_native_mojo.py --fixtures outputs-native/mojo-fixtures --output outputs-native/mojo-replay
+      - name: C ownership, bounds and SDK failure checks
+        run: |
+          python c/tools/build_native_mojo.py --test --sanitize --output outputs-native/mojo-sanitize
+          ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 outputs-native/mojo-sanitize outputs-native/mojo-fixtures/f32/model.mef
+      - name: Native CLI hardware probe
+        run: python c/coli mojo probe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-mojo-cpu-evidence
+          path: outputs-native/mojo-replay/report.json

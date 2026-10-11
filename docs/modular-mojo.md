@@ -4,19 +4,16 @@ The organizing runtime requirement is
 [state and bandwidth aware inference](adaptive-runtime.md) across SSD, CPU, GPU,
 NPU, TPU and AIPU, with measured per-workload placement.
 
-The user's SSD, CPU, GPU, NPU and AIPU software stack is based on Modular's Mojo.
-That is the declared integration target. The published Colibri fork currently
-uses its existing C engines and a native OpenVINO C-API graph backend; it does
-not yet call a Mojo/MAX backend. Existing measurements belong to those
-implementations and do not qualify the user's Modular stack.
+The user's Modular/Mojo stack is an integration target. The fork now includes a
+[native C Mojo/MAX tensor backend](mojo-backend.md), its device probe, compatible
+exported graph execution and external safetensor loading. Existing Colibri and
+OpenVINO workload paths retain their qualified implementations. Their timings
+are not Modular backend measurements.
 
 Keep the Colibri core, model state, speculative verification and storage
-scheduler in C. Connect native compute through the [MAX C API](https://max.modular.com/api/c/)
-or a compiled Mojo library with an explicitly agreed C ABI. MAX documents native
-model compilation/execution and tensor ownership APIs. Mojo can emit native
-[shared libraries or object files](https://docs.modular.com/mojo/tools/compilation/).
-Neither route requires replacing Colibri's core with Python model execution.
-This is the integration design, not an implemented backend.
+scheduler in C. The implemented connection uses the [MAX C API](https://max.modular.com/api/c/).
+Deployment-specific kernel/stage routing and state/prefetch integration remain
+separate from loading and executing a compatible native graph.
 
 | Component | Intended responsibility |
 |---|---|
@@ -42,17 +39,14 @@ device, precision, transfer and cancellation checks before claiming acceleration
 
 ## Concrete next handoff
 
-Locate the user's existing Mojo project or MAX native SDK, pin its version and
-identify the installed driver/plugin entry points and compatible model artifacts.
-Then implement the C bridge, preserving buffer ownership, bounds, cancellation
-and truthful device evidence. Compare the same checkpoint/workload against the
-unchanged C baseline, including SSD reads, transfers, verification and cleanup.
+The official pinned native SDK is now installed in the local isolated WSL
+qualification environment. CPU graph execution and precision/ownership checks
+are recorded in the backend guide. The user's custom accelerator project,
+plugins and model artifacts still need to be identified and tested on the actual
+bare-metal hosts. A generic runtime device is not an NPU/TPU/AIPU support claim.
 
-The current checkout contains no Mojo/MAX adapter or Mojo source. No compiler or
-MAX package was found on the checked Windows PATH, in the hardware venv, or in
-the current Kali WSL environment. This does not establish the absence of the
-user's stack elsewhere. Its project/SDK location has been requested.
-
-The native OpenVINO port remains published and qualified; the broader Strata
-ports and Modular backend integration remain incomplete. Native implementation,
-an available device backend and a ported workload are separate capabilities.
+Wire qualified stage/link measurements and compatible state leases into the
+state/bandwidth mapper, then port actual Strata prefetch/residency and other
+inference techniques. Native implementation, an available device backend and a
+ported workload remain distinct capabilities. The broader all-family/device
+acceleration goal is incomplete.

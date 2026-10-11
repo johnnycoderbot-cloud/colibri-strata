@@ -73,6 +73,7 @@ make -C c strata-native-check   # native bank, CPU kernels, identity/protocol te
 [Integration roadmap](docs/strata-roadmap.md)
 · [Streaming runtime expansion](docs/runtime-expansion.md)
 · [Native C graph engine and SDK setup](docs/native-graph.md)
+· [Native Mojo/MAX backend and bare-metal tests](docs/mojo-backend.md)
 · [Modular/Mojo integration target](docs/modular-mojo.md)
 · [State and bandwidth aware runtime](docs/adaptive-runtime.md)
 

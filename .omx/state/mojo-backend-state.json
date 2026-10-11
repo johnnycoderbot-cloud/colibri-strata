@@ -1,0 +1,20 @@
+{
+  "phase": "mojo-backend",
+  "active": true,
+  "status": "ready_for_publication",
+  "complete": false,
+  "owner": "/root (direct serial)",
+  "objective": "native Modular/Mojo C model backend and actual runtime probe, ready for operator bare-metal tests",
+  "sdk": "MAX26.6.0 / Mojo1.1.0",
+  "next_gate": "publish reviewed backend",
+  "runtime": "native-in-session review",
+  "owners": {
+    "/root": "native backend, CLI, fixtures, evidence and publication",
+    "/root/architecture": "independent read-only ABI/ownership/device review"
+  },
+  "review": {
+    "status": "approved",
+    "artifact": ".omx/research/mojo-backend-review.md"
+  },
+  "verification": "5 exact graph fixtures, 65 actual SDK contracts, ASan/UBSan/leaks and installed launcher checks"
+}

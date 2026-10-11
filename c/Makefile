@@ -1337,6 +1337,11 @@ runtime-map-check: tests/test_runtime_map$(EXE)
 	./tests/test_runtime_map$(EXE)
 .PHONY: runtime-map-check
 
+# Optional native Modular SDK. Install MAX26.6 in the build Python environment.
+mojo-backend:
+	$(PYTHON) tools/build_native_mojo.py
+.PHONY: mojo-backend
+
 tests/test_native_media$(EXE): tests/test_native_media.c native_media.o
 	$(CC) $(NOCUDA_CFLAGS) $< native_media.o -o $@ $(NOCUDA_LDFLAGS)
 tests/test_native_graph_backend$(EXE): tests/test_native_graph_backend.c
@@ -3014,6 +3019,10 @@ install: colibri$(EXE) native_graph$(EXE) glm53$(EXE) inkling$(EXE) kimi_k3$(EXE
 		setup_download.py mcp_server.py stream_runtime.py stream_models.py stream_media.py \
 		runtime_cli.py runtime_gateway.py $(DESTDIR)$(LIBEXECDIR)/
 	$(INSTALL) -m 644 native_graph.py $(DESTDIR)$(LIBEXECDIR)/
+	$(INSTALL) -m 644 mojo_cli.py $(DESTDIR)$(LIBEXECDIR)/
+	$(INSTALL) -m 644 native_mojo_backend.c native_mojo_backend.h mojo_runtime_main.c json.h $(DESTDIR)$(LIBEXECDIR)/
+	@if [ -f mojo_runtime$(EXE) ]; then $(INSTALL) -m 755 mojo_runtime$(EXE) $(DESTDIR)$(LIBEXECDIR)/mojo_runtime$(EXE); fi
+	@if [ -f mojo_runtime.sdk/modular.cfg ]; then $(INSTALL) -d $(DESTDIR)$(LIBEXECDIR)/mojo_runtime$(EXE).sdk; $(INSTALL) -m 644 mojo_runtime.sdk/modular.cfg $(DESTDIR)$(LIBEXECDIR)/mojo_runtime$(EXE).sdk/; fi
 	$(INSTALL) -m 755 native_graph$(EXE) $(DESTDIR)$(LIBEXECDIR)/native_graph$(EXE)
 	$(INSTALL) -m 644 tools/*.py $(DESTDIR)$(LIBEXECDIR)/tools/
 	$(INSTALL) -m 644 tools/build_native_genai_c.ps1 tools/native_genai_c_apply_template.patch tools/native_genai_c_source_manifest.json $(DESTDIR)$(LIBEXECDIR)/tools/

@@ -44,7 +44,7 @@
     "scope": "CPU only; no new GPU DMA or all-family qualification",
     "default_reason": "user-directed Strata-style three-extra-token window; previous timings retained with explicit settings"
   },
-  "next_implementation": "Connect actual Modular/Mojo native SDK/profile provider and wire this mapping policy to real workloads; continue measured Strata and other inference ports.",
+  "next_implementation": "Wire the actual native Modular/MAX backend into compatible workload adapters and measured state/bandwidth placement; qualify supported physical devices and continue measured Strata ports.",
   "graph_port": {
     "status": "published",
     "language": "C17 engine, native C SDK APIs; Python control plane only",
@@ -58,13 +58,14 @@
     "speed_claim": "functional native conversion; no new throughput/power claim",
     "device_scope": "six CPU/GPU route replays; core SR placement verified, GenAI constructor selection only; NPU/TPU/AIPU physical full-model qualification pending"
   },
-  "handoff_reason": "User requested wrap-up and specified Modular/Mojo hardware software stack; native graph slice published, integration location requested.",
+  "handoff_reason": "Native Mojo backend slice finishing review/publication; original all-family/device and state/bandwidth workload wiring remain incomplete.",
   "target_stack": {
     "declared_by_user": "Modular Mojo for SSD/CPU/GPU/NPU/AIPU software stack",
     "integration_boundary": "retain Colibri C core; native MAX C API or compiled Mojo C ABI",
-    "implemented": false,
-    "runtime_location": "requested from user; not found in checked checkout/Windows PATH/hardware venv/current Kali WSL",
-    "documentation": "docs/modular-mojo.md"
+    "implemented": true,
+    "runtime_location": "Official MAX26.6.0/Mojo1.1.0 SDK in isolated local WSL; native C backend implemented. User custom accelerator plugins/project remain unidentified.",
+    "documentation": "docs/modular-mojo.md",
+    "implementation_scope": "Compatible exported tensor graphs and external safetensor weights; not automatic existing-model or state/SSD scheduler integration."
   },
   "adaptability": {
     "policy": "c/runtime_map.h/.c",
@@ -83,5 +84,15 @@
       "encoder/embedding workloads",
       "other stateful models with compatible adapters"
     ]
+  },
+  "mojo_backend": {
+    "status": "ready_for_publication",
+    "language": "C17 client and MAX C SDK APIs; native Modular runtime/compiler",
+    "qualification": ".omx/research/mojo-backend-qualification.json",
+    "documentation": "docs/mojo-backend.md",
+    "local_device_scope": "WSL CPU only, runtime accelerator_count 0",
+    "verification": "5 exact native fixture replays; 65 actual SDK checks under ASan/UBSan/leaks",
+    "speed_claim": "functional backend only; full-model throughput comparison pending",
+    "review": "approved independent native C ABI/ownership/device review"
   }
 }

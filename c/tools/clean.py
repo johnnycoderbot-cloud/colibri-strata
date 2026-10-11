@@ -12,6 +12,7 @@ import shutil
 FILES = [
     "colibri", "colibri.exe",
     "native_graph", "native_graph.exe",
+    "mojo_runtime", "mojo_runtime.exe",
     "native_graph_main.o", "native_graph_backend.o", "native_graph_manifest.o", "native_media.o",
     "runtime_map.o",
     "inkling", "inkling.exe",

@@ -153,5 +153,28 @@
       "synthetic policy data is not hardware performance evidence",
       "caller owns exact profile identity, reservations, transfer execution and state commit"
     ]
+  },
+  {
+    "id": "native-mojo-backend",
+    "reviewer": "/root/architecture",
+    "status": "approved",
+    "scope": "actual MAX26.6 C ABI, model/tensor/weight ownership, synchronization, device refusal, input shadows and transactional outputs",
+    "fixed_findings": [
+      "exact 128 MiB tensor admission boundary"
+    ],
+    "verification": [
+      "65 actual SDK checks with ASan/UBSan/leaks",
+      "five exact exported graph fixture replays, external weights and absent-accelerator refusal",
+      "final full native CLI cleanup under sanitizers",
+      "SDK-free launcher4 and Linux install closure2"
+    ],
+    "qualification_limits": [
+      "WSL CPU only; zero Modular-visible accelerators",
+      "compatible exported tensor graphs; existing Colibri decoders and workload adapters are not automatically converted",
+      "signed INT4 storage expands to INT8; integer fixture computes INT64",
+      "output tensor placement does not prove every graph node's device",
+      "bare-metal GPU/NPU/TPU/AIPU and state/SSD scheduling qualification remain incomplete"
+    ],
+    "artifact": ".omx/research/mojo-backend-review.md"
   }
 ]

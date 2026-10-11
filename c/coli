@@ -3557,6 +3557,11 @@ def cmd_runtime(a):
             "prepare-runtime": runtime_cli.prepare}[a.cmd](a)
 
 
+def cmd_mojo(a):
+    import mojo_cli
+    return mojo_cli.run(a)
+
+
 def main():
     common=argparse.ArgumentParser(add_help=False)
     common.add_argument("--model", default=DEF_MODEL); common.add_argument("--ram", type=int, default=0)  # 0 = auto (il motore usa l'88% della RAM disponibile)
@@ -3615,6 +3620,19 @@ def main():
     ap=argparse.ArgumentParser(prog="coli", parents=[common], description="colibri — run GLM-5.2 locally")
     ap.add_argument("--version", action="version", version=f"colibri {_version}")
     sub=ap.add_subparsers(dest="cmd")
+    pmj = sub.add_parser("mojo", help="native Modular/Mojo device probe and compatible graph inference")
+    smj = pmj.add_subparsers(dest="mojo_cmd", required=True)
+    mjprobe = smj.add_parser("probe", help="report devices actually visible to the native Modular runtime")
+    mjrun = smj.add_parser("run", help="execute an exported MAX/Mojo graph through native C")
+    for parser in (mjprobe, mjrun):
+        parser.add_argument("--native", help="override the native mojo_runtime executable")
+        parser.add_argument("--timeout", type=float, default=180)
+    mjrun.add_argument("--model", required=True, help="compatible exported .mef model")
+    mjrun.add_argument("--inputs", required=True, help="typed tensor-file JSON manifest")
+    mjrun.add_argument("--output", required=True, help="new output directory")
+    mjrun.add_argument("--device", default="CPU", help="CPU or exact ACCELERATOR.id; no fallback")
+    mjrun.add_argument("--repeat", type=int, default=1)
+    mjrun.add_argument("--weights", action="append", default=[], help="external safetensor shard; repeat for multiple shards")
     prt = sub.add_parser("prepare-runtime", help="explicitly download a pinned speech/text/upscale model pack")
     prt.add_argument("kind", choices=("speech", "camera_upscale", "text_graph"))
     prt.add_argument("--output", required=True)
@@ -3809,7 +3827,7 @@ def main():
         if (a.parallel_heads or os.environ.get("COLI_STRATA_HEADS")) and a.temp is None:
             a.temp = 0
     handler={"build":cmd_build,"info":cmd_info,"plan":cmd_plan,"mirror":cmd_mirror,
-             "prepare-runtime":cmd_runtime,"transcribe":cmd_runtime,"upscale":cmd_runtime,
+             "prepare-runtime":cmd_runtime,"transcribe":cmd_runtime,"upscale":cmd_runtime,"mojo":cmd_mojo,
              "doctor":cmd_doctor,"tune":cmd_tune,
              "run":cmd_run,"chat":cmd_chat,"serve":cmd_serve,"stop":cmd_stop,"bench":cmd_bench,
              "convert":cmd_convert,"web":cmd_web}.get(a.cmd)

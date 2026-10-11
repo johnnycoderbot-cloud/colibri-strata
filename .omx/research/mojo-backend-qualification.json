@@ -1,0 +1,243 @@
+{
+  "schema": "colibri.native-mojo-qualification/v1",
+  "native_binary_sha256": "c60dce072ce29b44db1dfb68a08c11a8d25043c8d1419f51370eb85bf2d46b65",
+  "host": {
+    "os": "Linux",
+    "release": "6.18.40.1-microsoft-standard-WSL2",
+    "architecture": "x86_64",
+    "wsl": true
+  },
+  "probe": {
+    "schema": "colibri.mojo-device-probe/v1",
+    "sdk_version": "26.6.0",
+    "cpu_available": true,
+    "accelerator_count": 0,
+    "enumeration_scope": "Modular runtime-visible devices",
+    "npu_tpu_aipu": "requires compatible driver/plugin; no universal discovery claim",
+    "native_windows": false
+  },
+  "runs": [
+    {
+      "fixture": "f32",
+      "exact_reference_match": true,
+      "external_wall_seconds": 0.48569342999999776,
+      "model_sha256": "5b4cb57b586bda3a1f0ef407d753d236f1b72dceb856afe700d3df50b6511eaa",
+      "output_sha256": "7df29589aa703ec3f780425438b5375a2c1cb67d9dea02b61e63470c55fd79c8",
+      "result": {
+        "schema": "colibri.mojo-native-run/v1",
+        "backend": "modular-max-native-c",
+        "sdk_version": "26.6.0",
+        "requested_device": "CPU",
+        "inference_runtime": "native-c",
+        "python_model_bindings": false,
+        "device_proof": "checked source output tensor placement; not all-node proof",
+        "input_read_seconds": 0.007224148,
+        "compile_load_seconds": 0.042291104,
+        "run_seconds": 0.000728882,
+        "publish_seconds": 0.002938434,
+        "cleanup_seconds": 0.406829721,
+        "total_seconds": 0.460012289,
+        "repeats": 5,
+        "outputs": [
+          {
+            "name": "output0",
+            "dtype": "f32",
+            "bytes": 32,
+            "source_accelerator": false,
+            "source_device_id": 0,
+            "shape": [
+              2,
+              4
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "i4",
+      "exact_reference_match": true,
+      "external_wall_seconds": 0.2582188300000041,
+      "model_sha256": "d4d540aab9cde55e50e03e7af1bf93acd4e23b15e9c696da374b6028c5352579",
+      "output_sha256": "19a17b8f252928cf6241da8275c8d67b18f6ab23114d7ef9736e471a8fd68ad7",
+      "result": {
+        "schema": "colibri.mojo-native-run/v1",
+        "backend": "modular-max-native-c",
+        "sdk_version": "26.6.0",
+        "requested_device": "CPU",
+        "inference_runtime": "native-c",
+        "python_model_bindings": false,
+        "device_proof": "checked source output tensor placement; not all-node proof",
+        "input_read_seconds": 0.0050021,
+        "compile_load_seconds": 0.034063569,
+        "run_seconds": 0.000526217,
+        "publish_seconds": 0.002501653,
+        "cleanup_seconds": 0.189569262,
+        "total_seconds": 0.231662801,
+        "repeats": 5,
+        "outputs": [
+          {
+            "name": "output0",
+            "dtype": "i64",
+            "bytes": 40,
+            "source_accelerator": false,
+            "source_device_id": 0,
+            "shape": [
+              5
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "i8",
+      "exact_reference_match": true,
+      "external_wall_seconds": 0.2445560219999976,
+      "model_sha256": "d4d540aab9cde55e50e03e7af1bf93acd4e23b15e9c696da374b6028c5352579",
+      "output_sha256": "4db1145a78be7033f757f584002c7e18ec616ab8a2de3e5f2eefc98f7cba0172",
+      "result": {
+        "schema": "colibri.mojo-native-run/v1",
+        "backend": "modular-max-native-c",
+        "sdk_version": "26.6.0",
+        "requested_device": "CPU",
+        "inference_runtime": "native-c",
+        "python_model_bindings": false,
+        "device_proof": "checked source output tensor placement; not all-node proof",
+        "input_read_seconds": 0.005924538,
+        "compile_load_seconds": 0.029922297,
+        "run_seconds": 0.00034839,
+        "publish_seconds": 0.003105841,
+        "cleanup_seconds": 0.183514672,
+        "total_seconds": 0.222815738,
+        "repeats": 5,
+        "outputs": [
+          {
+            "name": "output0",
+            "dtype": "i64",
+            "bytes": 40,
+            "source_accelerator": false,
+            "source_device_id": 0,
+            "shape": [
+              5
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "i16",
+      "exact_reference_match": true,
+      "external_wall_seconds": 0.2557333630000045,
+      "model_sha256": "9335db3a8e5bbcf0d71ac0a505d03807d7fe816f7a58c0178386ae7d62a19d69",
+      "output_sha256": "7c16b3ef8b8b3aba9063ccdb9e615d468bfc044cd92de1419e49aca4adab0049",
+      "result": {
+        "schema": "colibri.mojo-native-run/v1",
+        "backend": "modular-max-native-c",
+        "sdk_version": "26.6.0",
+        "requested_device": "CPU",
+        "inference_runtime": "native-c",
+        "python_model_bindings": false,
+        "device_proof": "checked source output tensor placement; not all-node proof",
+        "input_read_seconds": 0.004569046,
+        "compile_load_seconds": 0.032105568,
+        "run_seconds": 0.000341777,
+        "publish_seconds": 0.002556904,
+        "cleanup_seconds": 0.188981295,
+        "total_seconds": 0.22855459,
+        "repeats": 5,
+        "outputs": [
+          {
+            "name": "output0",
+            "dtype": "i64",
+            "bytes": 40,
+            "source_accelerator": false,
+            "source_device_id": 0,
+            "shape": [
+              5
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "weighted",
+      "exact_reference_match": true,
+      "external_wall_seconds": 0.2644509690000092,
+      "model_sha256": "b652083b428cb23ab63e63ce57539fed7edbe46b93e9e101260102516f173b63",
+      "output_sha256": "7df29589aa703ec3f780425438b5375a2c1cb67d9dea02b61e63470c55fd79c8",
+      "result": {
+        "schema": "colibri.mojo-native-run/v1",
+        "backend": "modular-max-native-c",
+        "sdk_version": "26.6.0",
+        "requested_device": "CPU",
+        "inference_runtime": "native-c",
+        "python_model_bindings": false,
+        "device_proof": "checked source output tensor placement; not all-node proof",
+        "input_read_seconds": 0.004218606,
+        "compile_load_seconds": 0.034211528,
+        "run_seconds": 0.000498916,
+        "publish_seconds": 0.003060878,
+        "cleanup_seconds": 0.194932936,
+        "total_seconds": 0.236922864,
+        "repeats": 5,
+        "outputs": [
+          {
+            "name": "output0",
+            "dtype": "f32",
+            "bytes": 32,
+            "source_accelerator": false,
+            "source_device_id": 0,
+            "shape": [
+              2,
+              4
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "accelerator_refusal": {
+    "passed": true,
+    "cpu_fallback": false,
+    "diagnostic": "mojo_runtime: requested Mojo/MAX accelerator is unavailable; no CPU fallback"
+  },
+  "scope": "functional synthetic graphs, not full-model throughput or universal hardware support",
+  "verification": {
+    "native_sdk_contract_checks": 65,
+    "asan_ubsan_leaks": "passed actual C SDK contracts and final external-weight native CLI cleanup",
+    "launcher_tests": 4,
+    "install_closure_tests": 2,
+    "install_windows_skips": [
+      "symlink privileges"
+    ],
+    "family_registry_tests": 59,
+    "legacy_media_cli_tests": 6,
+    "native_dependencies": "libmax and native Modular/C++ runtime libraries; no linked Python interpreter",
+    "exact_storage_boundary_checks": 18,
+    "install_linux": "both install closure checks passed"
+  },
+  "precision_scope": {
+    "f32": "exact projection/ReLU fixture",
+    "int8": "signed native input, fixture computes INT64",
+    "int16": "signed native input, fixture computes INT64",
+    "int4": "signed packed storage expanded to INT8 input; fixture computes INT64; no native INT4 math claim"
+  },
+  "external_weights": "native safetensor loader and borrowed registry retained until model destruction; exact fixture and sanitizer checks passed",
+  "sdk": {
+    "max": "26.6.0",
+    "mojo": "1.1.0 (8189361e)",
+    "installation": "isolated /tmp SDK in Kali WSL; official Modular-owned PyPI packages",
+    "bare_metal_os_tested": false
+  },
+  "limits": [
+    "Compatible exported tensor graphs; existing native/OpenVINO packs need explicit adapters/export.",
+    "CPU WSL qualification, not native bare-metal OS/GPU/NPU/TPU/AIPU qualification.",
+    "Device proof checks source output placement, not every graph node.",
+    "No universal device visibility, native INT4 arithmetic, full-model speedup or dynamic SSD expert paging claim."
+  ],
+  "source_sha256": {
+    "c/native_mojo_backend.h": "f812bfeb1e313231443f0f932d4bd95387fdb335f63efa00936843d34091ddaf",
+    "c/native_mojo_backend.c": "eeb478aba8bfbb7fa03862d7471892bd901468c1650505761f69c4de1fe814a7",
+    "c/mojo_runtime_main.c": "4d2eb3d2d167c9627e0541a40a6f5e3cbc4c954b4e6e074a3ab6ba0bc2467629",
+    "c/mojo_cli.py": "427eb2d4d2e9ede87edda793551f5d05f7fe37d5a14e8100567a6c971bc70138"
+  }
+}

@@ -183,6 +183,9 @@ jobs:
           # run it -- the second half of #720.
           mkdir -p dist/tools
           cp c/tools/build_native_genai_c.ps1 c/tools/native_genai_c_apply_template.patch c/tools/native_genai_c_source_manifest.json dist/tools/
+          # Optional Mojo backend is built on a supported host with its own SDK.
+          cp c/native_mojo_backend.c c/native_mojo_backend.h c/mojo_runtime_main.c c/json.h dist/
+          cp c/tools/build_native_mojo.py c/tools/prepare_mojo_fixture.py c/tools/check_native_mojo.py dist/tools/
           cp c/tools/k3_tokenizer.py dist/tools/
           # check_ablate_evidence.py verifies the ABLATE evidence that eval_glm.py
           # (packaged above) produces. Nothing in the code names it -- its caller is a
