@@ -143,9 +143,14 @@ class ReaderTest(unittest.TestCase):
     def test_invalid_constructor_bounds_and_env_fail_before_launch(self):
         with patch.object(bench.subprocess,"Popen") as launch:
             for kwargs in ({"threads":True},{"threads":65},{"startup_timeout":float("nan")},
-                           {"env":{"bad=name":"value"}},{"env":{"OK":"\0"}}):
+                           {"env":{"bad=name":"value"}},{"env":{"OK":"\0"}},
+                           {"cache_per_layer":0},{"cache_per_layer":True},{"expert_bits":17}):
                 with self.assertRaises(ValueError):bench.NativeEngine("fixture","model",**kwargs)
             launch.assert_not_called()
+
+    def test_explicit_expert_cache_and_precision_reach_launch_arguments(self):
+        _, _, launch = self.engine(cache_per_layer=16, expert_bits=4)
+        self.assertEqual(launch.call_args.args[0][-2:], ["16", "4"])
 
 
 class ReportEngine:

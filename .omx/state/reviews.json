@@ -80,5 +80,23 @@
       "depth1 performance measured; depth2/3 correctness measured",
       "otherfamily/device rollout pending"
     ]
+  },
+  {
+    "id": "mtp-depth-and-moe-prefetch",
+    "reviewer": "/root (direct source/evidence review)",
+    "status": "approved",
+    "scope": "actual draft-depth telemetry, both-arm MTP qualification, fixed-cache MoE collector, request-owned prefetch drain and CI test setup fixes",
+    "verification": [
+      "60 new timed pairs and 12 exact numeric checks",
+      "47 Python benchmark tests",
+      "complete focused native gate and legacy dense-batch/serve tests",
+      "new cache/drain and dense-batch ASan/UBSan checks"
+    ],
+    "qualification_limits": [
+      "no new independent review in this serial slice",
+      "warm native-filesystem CPU tests; cold SSD and GPU DMA not measured",
+      "Windows/macOS remote rerun pending",
+      "broader family/device/precision qualification pending"
+    ]
   }
 ]

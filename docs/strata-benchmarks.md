@@ -1,5 +1,12 @@
 # Benchmark protocol
 
+The draft-depth trials retain maximum one: maximum two measured +1.3% overall
+against it, maximum three +0.1%, with workload regressions in both studies.
+[Depth evidence and choice](sequential-mtp.md#measured-draft-depth-choice).
+Existing native OLMoE CPU prefetch measured -1.4% with eight cached experts per
+layer and +0.6% with sixteen; these warm-filesystem whole-request results keep
+prefetch opt-in. [MoE trial, exact parity and timing scope](moe-prefetch-benchmark.md).
+
 The complete CPU fork versus unchanged Colibri measures **1.1508 median paired
 decode ratio (+15.1%)**, with all 15 candidate pairs faster. Per-prompt paired
 medians are 1.1168/1.2044/1.1508; median arm rates 40.827 → 45.997 tokens/s.

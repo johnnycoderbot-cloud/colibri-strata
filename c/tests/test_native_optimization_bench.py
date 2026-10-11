@@ -50,6 +50,10 @@ class FakeEngine:
             self.owner.fault(self, prompt, logprobs, result)
         if self.env["Q36_MTP"] and not self.owner.missing_mtp_evidence:
             self.stderr.append(f"[qwen36 MTP] turn {rid}: bank_calls=1 bank_seconds=0.01 failures=0 forwards=32 tokens=63 accepted=8 drafts=16 verifies=8 ended_mid_verify=0\n")
+            self.stderr.append(f"[qwen36 MTP gate] turn {rid}: fixture | judged/accepted by offset 2:1/1 | declined=0 probes=0\n")
+            depth=int(self.env["Q36_MTP_DRAFTS"])
+            if not self.owner.missing_depth_evidence:
+                self.stderr.append(f"[qwen36 MTP depths] turn {rid}: depth1={int(depth==1)} depth2={int(depth==2)} depth3={int(depth==3)}\n")
         return result
 
     def close(self):
@@ -67,6 +71,7 @@ class Factory:
         self.close_fault = None
         self.creation_fault = None
         self.missing_mtp_evidence = False
+        self.missing_depth_evidence = False
 
     def __call__(self, *args, **kwargs):
         if self.creation_fault:
@@ -191,6 +196,36 @@ class BenchmarkTest(unittest.TestCase):
         self.assertTrue(study["pretrained_mtp_executed"])
         self.assertEqual(study["control"]["env"]["Q36_MTP"],"")
         self.assertTrue(study["candidate"]["env"]["Q36_MTP"])
+
+    def test_depth_comparison_changes_only_maximum_and_qualifies_both_arms(self):
+        report=self.run_bench("--mtp-dir",str(self.mtp),"--mtp-drafts","3","--studies","mtp-depth")
+        s=report["studies"][0]
+        self.assertEqual(s["control"]["engine"],s["candidate"]["engine"])
+        self.assertEqual({k for k in s["control"]["env"] if s["control"]["env"][k]!=s["candidate"]["env"][k]}, {"Q36_MTP_DRAFTS"})
+        self.assertEqual(s["control"]["mtp_maximum_depth"],1)
+        self.assertEqual(s["candidate"]["mtp_maximum_depth"],3)
+        self.assertEqual(s["pretrained_mtp_execution_by_arm"],{"control":True,"candidate":True})
+        self.assertEqual(s["records"][0]["control"]["native_mtp_actual_depths"],{"1":1,"2":0,"3":0})
+        self.assertEqual(s["records"][0]["candidate"]["native_mtp_actual_depths"],{"1":0,"2":0,"3":1})
+
+    def test_depth_comparison_refuses_missing_or_inconsistent_execution_counts(self):
+        self.factory.missing_depth_evidence=True
+        with self.assertRaisesRegex(RuntimeError,"depth evidence"):
+            self.run_bench("--mtp-dir",str(self.mtp),"--mtp-drafts","2","--studies","mtp-depth")
+        self.failed_report()
+
+    def test_depth_counter_parser_rejects_duplicates_and_garbage(self):
+        line="[qwen36 MTP depths] turn bench4: depth1=3 depth2=2 depth3=0\n"
+        self.assertEqual(bench.mtp_depth_statistics([line]),{"bench4":{"1":3,"2":2,"3":0}})
+        for lines in ([line,line],[line.replace("depth2=2","depth2=-1")],[line.rstrip()+" extra\n"]):
+            with self.subTest(lines=lines),self.assertRaises(ValueError):bench.mtp_depth_statistics(lines)
+
+    def test_mtp_acceptance_parser_rejects_misleading_offsets(self):
+        line="[qwen36 MTP gate] turn bench4: fixture | judged/accepted by offset 2:3/2 3:1/1 | declined=2 probes=1"
+        self.assertEqual(bench.mtp_acceptance_statistics([line])["bench4"]["offsets"]["2"],{"judged":3,"accepted":2})
+        for bad in (line.replace("2:3/2","2:3/4"),line.replace("2:3/2","5:3/2"),
+                    line.replace("2:3/2","2:3/2 garbage"),line.replace("3:1/1","2:1/1")):
+            with self.assertRaises(ValueError):bench.mtp_acceptance_statistics([bad])
 
     def test_wide_ablation_is_independent_and_other_ablations_hold_wide_fixed(self):
         report = self.run_bench("--wide", "1", "--ablate-knobs", "--ablate-wide", "--heads", str(self.heads))

@@ -3,13 +3,13 @@
   "active": true,
   "status": "in_progress",
   "objective": "measurably faster native Colibri inference across all model families and qualified hardware",
-  "first_family": "qwen36 native Qwen3.5-0.8B; OLMoE real model prepared for following slice",
-  "runtime": "native-in-session",
+  "first_family": "qwen36 dense CPU MTP qualified; OLMoE CPU cache8/16 prefetch measured",
+  "runtime": "direct-serial",
   "owners": {
-    "/root": "native adapter, trace capture, real training, benchmark, CLI and publication",
-    "/root/memory_primitives": "CPU kernels completed; benchmark driver robustness and tied converter tests active",
-    "/root/parallel_heads": "CSNH completed; normalized two-head training and pretrained output transfer prototype active",
-    "/root/architecture": "active-bank frontier/cancel/prefix regression harness and independent review"
+    "/root": "current draft-depth and OLMoE prefetch qualification/publication; no parallel CPU actors",
+    "/root/memory_primitives": "completed CPU kernels and benchmark-driver review",
+    "/root/parallel_heads": "completed independent/residual head prototypes",
+    "/root/architecture": "completed prior native frontier and sequential-MTP reviews"
   },
   "baseline": "outputs-native/qwen36-baseline from unchanged source, same compiler and real native container",
   "checkpoint": "Qwen/Qwen3.5-0.8B@2fc06364715b967f1860aea9cf38778875588b17",
@@ -30,8 +30,17 @@
   "sequential_mtp": {
     "same_binary_paired_ratio": 1.1313256225600736,
     "stock_paired_ratio": 1.1508315575477013,
-    "all_30_candidate_pairs_faster": true,
     "target_numeric_parity": true,
-    "qualification": "dense qwen36 CPU INT8/IDOT oneKV greedy; actualdepth1/2/3 correctness,depth1 performance"
+    "qualification": "dense qwen36 CPU INT8/IDOT oneKV greedy; depth1/2/3 correctness and performance measured; retain maximum1",
+    "all_30_original_mtp_off_on_and_stock_candidate_pairs_faster": true
+  },
+  "depth_and_moe": {
+    "depth2_vs1": 1.0125547058043411,
+    "depth3_vs1": 1.0009078941395433,
+    "default_maximum": 1,
+    "olmoe_pilot_cache8": 0.9861830742659758,
+    "olmoe_pilot_cache16": 1.0062937062937063,
+    "default_pilot": 0,
+    "scope": "CPU only; no new GPU DMA or all-family qualification"
   }
 }

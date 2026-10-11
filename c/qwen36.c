@@ -5032,6 +5032,7 @@ typedef struct {
     float *ahead_mtp;
     uint64_t mtp_calls, mtp_failures;
     double mtp_seconds;
+    uint64_t mtp_depth_calls[3];
 } Q36Spec;
 static const int *g_q36_oracle; static int g_q36_oracle_n;   /* ref.json's full ids (COLI_LOOKUP_FORCE) */
 
@@ -5188,7 +5189,9 @@ static int q36_mtp_propose(Model *m,Q36Spec *sp,int tok,int pos,int wanted,int *
     q36_mtp_truncate(g_q36_mtp,canonical);
     double elapsed=now_s()-start;sp->mtp_calls++;sp->mtp_seconds+=elapsed;
     if(ok && count)spec_gate_draft_cost(&sp->gate,SPEC_SRC_MTP,elapsed/count);
-    if(!ok){sp->mtp_failures++;return 0;}return count;
+    if(!ok){sp->mtp_failures++;return 0;}
+    if(count>=1 && count<=3)sp->mtp_depth_calls[count-1]++;
+    return count;
 }
 #endif
 
@@ -5344,6 +5347,9 @@ static void q36_spec_report(const Q36Spec *sp, const char *scope) {
         for(int j=0;j<SPEC_MAX_DRAFTS;j++)if(sp->gate.prop[SPEC_SRC_MTP][j])
             fprintf(stderr," %d:%llu/%llu",j+2,(unsigned long long)sp->gate.prop[SPEC_SRC_MTP][j],(unsigned long long)sp->gate.hit[SPEC_SRC_MTP][j]);
         fprintf(stderr," | declined=%llu probes=%llu\n",(unsigned long long)sp->gate.declined[SPEC_SRC_MTP],(unsigned long long)sp->gate.probes[SPEC_SRC_MTP]);
+        fprintf(stderr,"[qwen36 MTP depths] %s: depth1=%llu depth2=%llu depth3=%llu\n",scope,
+            (unsigned long long)sp->mtp_depth_calls[0],(unsigned long long)sp->mtp_depth_calls[1],
+            (unsigned long long)sp->mtp_depth_calls[2]);
     }
     if (sp->heads) {
         fprintf(stderr,"[qwen36 strata] %s: bank_calls=%llu bank_seconds=%.6f failures=%llu forwards=%llu tokens=%llu accepted=%llu drafts=%llu verifies=%llu ended_mid_verify=%d\n",

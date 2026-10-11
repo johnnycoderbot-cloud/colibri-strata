@@ -1,0 +1,33 @@
+{
+  "phase": "mtp-depth-and-moe",
+  "active": false,
+  "status": "complete",
+  "runtime": "direct-serial",
+  "objective": "Benchmark draft maxima2/3 against1, select the fastest verified default, then measure larger MoE expert prefetch/cache behavior",
+  "owner": "/root",
+  "next_gate": "publish reviewed evidence; broader native family/device qualification remains pending",
+  "complete": true,
+  "depth_comparison": {
+    "max2_vs1": 1.0125547058043411,
+    "max3_vs1": 1.0009078941395433,
+    "default_maximum": 1,
+    "decision": "mixed workload gains; retain one"
+  },
+  "moe_prefetch": {
+    "cache8_paired_ratio": 0.9861830742659758,
+    "cache16_paired_ratio": 1.0062937062937063,
+    "default_pilot": 0,
+    "all_6_numeric_checks_equal": true,
+    "all_30_timed_outputs_equal": true,
+    "source_staged_manifest_verified": true
+  },
+  "verification": {
+    "native_gate": "passed; strata-native-check plus legacy dense-batch and OLMoE serve framing",
+    "python_bench_tests": 47,
+    "asan_ubsan": "OLMoE cache/drain and legacy dense-batch passed",
+    "new_real_timed_pairs": 60,
+    "new_separate_numeric_checks": 12,
+    "temporary_staged_copy_removed": true,
+    "windows_macos_ci": "test setup fixes included; fresh remote results pending"
+  }
+}

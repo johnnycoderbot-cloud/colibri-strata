@@ -2,6 +2,9 @@
  * projection microbench. Compile standalone with strict warnings + OpenMP.
  * --bench-only reports kernel time, never model tokens/second. */
 #define _POSIX_C_SOURCE 200809L
+#ifdef __APPLE__
+#define _DARWIN_C_SOURCE 1
+#endif
 #include <assert.h>
 #include <time.h>
 #include <stdio.h>

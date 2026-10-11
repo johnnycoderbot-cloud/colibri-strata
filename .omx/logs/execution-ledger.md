@@ -176,3 +176,19 @@
   40.827→45.997 arm medians. Bothnumericparity andasset/binaryhash stability
   gatespassed; no forced guesses/traces during timing. Overall all-family/device
   qualification remainspending; current denseCPU-MTPslice achieveditsgain.
+
+- User approved deeper sequential MTP and larger MoE qualification. Added actual
+  chosen-depth/source-acceptance evidence and same-binary maximum1 versus2/3
+  studies. Thirty timed pairs and six numeric checks passed; paired medians
+  1.0125547 and1.0009079, with graph-search regressions. Keep maximum1.
+- Existing OLMoE PILOT0/1 measured at fixed cache8/16; thirty more timed pairs
+  and six numeric checks passed, paired medians .9861831 and1.0062937. Increased
+  cache hits did not justify enabling PILOT by default. Request-owned queue
+  drain charges unused reads; late PROF handling and real worker-load evidence
+  prevent false acceleration claims. Staged native-filesystem assets matched
+  source hashes and were removed safely after measurement; originals retained.
+- Final focused native gate and legacy dense-batch/OLMoE serve checks passed;
+  47 benchmark Python tests; new cache/drain and legacy dense-batch ASan/UBSan
+  passed. CI test setup fixes isolate old grouped-projection counters and restore
+  Darwin feature declarations. Remote platform rerun pending. Direct review
+  approved; all-family/device/precision qualification remains incomplete.

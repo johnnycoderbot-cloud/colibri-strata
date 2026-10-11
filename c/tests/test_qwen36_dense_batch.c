@@ -108,6 +108,9 @@ static void shared_case(const char *format,int quantized) {
 int main(void) {
     /* This gate owns the dense-int8 mode regardless of the caller's shell. */
     unsetenv("COLI_DENSE_I8");
+    /* Isolate the older row-batching dispatch contract. The optional grouped
+     * projection path bypasses these per-projection call counters. */
+    env_set("QWEN_PROJECTION_GROUP","0");
     one_shape(1, 17, 13);       /* decode-shaped fallback */
     one_shape(2, 32, 31);       /* one vector block, one row pair */
     one_shape(4, 64, 73);       /* even prompt, serial OpenMP clause */
@@ -115,6 +118,7 @@ int main(void) {
     shared_case("f32",0);
     shared_case("int8",1);
     unsetenv("QWEN_SHARED_BATCH");unsetenv("QWEN_DENSE_BATCH");
+    env_unset("QWEN_PROJECTION_GROUP");
     if(failures){fprintf(stderr,"qwen dense batch: %d failure(s)\n",failures);return 1;}
     puts("qwen dense batch: ok");return 0;
 }

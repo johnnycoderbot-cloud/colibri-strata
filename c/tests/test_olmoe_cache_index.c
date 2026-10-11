@@ -209,6 +209,36 @@ static void check_prefetch_spares_busy(void) {
     free_loader(&m);
 }
 
+static void *drain_thread(void *p) {
+    Req *r = p; pilot_wait_idle();
+    __atomic_store_n(&r->done, 1, __ATOMIC_RELEASE); return NULL;
+}
+
+/* Match the worker's publication contract: r advances after the real load.
+ * Completion must wait for an in-flight, otherwise unused expert read. */
+static void *one_worker_item(void *p) {
+    Req *r = p; pilot_realload(r->m, 0, r->eid);
+    __atomic_store_n(&pilot_r, 1, __ATOMIC_RELEASE);
+    __atomic_store_n(&r->done, 1, __ATOMIC_RELEASE); return NULL;
+}
+
+static void check_request_drain_owns_inflight_read(void) {
+    Model m; init_loader(&m); m.is_queued[3] = 1;
+    g_pilot = 1; pilot_r = 0; pilot_w = 1;
+    Req pf = { &m, 3, 0, NULL }, drain = { &m, 0, 0, NULL };
+    pthread_t tp, td;
+    pthread_create(&tp, NULL, one_worker_item, &pf);
+    for (int ms = 0; ms < 5000 && !io_get(&g_io_open); ms++) sleep_ms(1);
+    CHECK(io_get(&g_io_open), "queued read never started");
+    pthread_create(&td, NULL, drain_thread, &drain);
+    sleep_ms(10);
+    CHECK(!__atomic_load_n(&drain.done, __ATOMIC_ACQUIRE), "request completed with an expert read still in flight");
+    io_release();
+    wait_done(&pf, tp, "worker item"); wait_done(&drain, td, "request drain");
+    CHECK(pilot_r == pilot_w && copies(&m, 3) == 1, "drain did not finish the queued read");
+    g_pilot = 0; pilot_r = pilot_w = 0; free_loader(&m);
+}
+
 /* kv_room_fit: the cache gives the KV its slots back.  Eight resident experts,
  * expert e last used at clock 10 + e, expert 0 pinned; a room that holds the
  * KV of 300 positions plus three and a half slots.  The cap must come down to
@@ -284,6 +314,7 @@ int main(void) {
     check_prefetch_skips_demand();
     check_demand_joins_demand();
     check_prefetch_spares_busy();
+    check_request_drain_owns_inflight_read();
     check_kv_room_gives_back_slots();
     if (failures) { fprintf(stderr,"olmoe cache index: %d failure(s)\n", failures); return 1; }
     puts("olmoe cache index: ok");

@@ -64,8 +64,10 @@ def linux_path(path):
     return value
 
 class NativeEngine:
-    def __init__(self, engine, model, threads=8, env=None, wsl=None, *, startup_timeout=180, close_timeout=20):
+    def __init__(self, engine, model, threads=8, env=None, wsl=None, *, startup_timeout=180, close_timeout=20,
+                 cache_per_layer=1, expert_bits=8):
         bounded_int(threads,1,64,"threads")
+        bounded_int(cache_per_layer,1,4096,"cache_per_layer");bounded_int(expert_bits,2,16,"expert_bits")
         bounded_number(startup_timeout,0,3600,"startup_timeout",True)
         bounded_number(close_timeout,0,60,"close_timeout")
         if wsl is not None and (not isinstance(wsl,str) or not wsl or len(wsl)>128 or any(ord(c)<32 for c in wsl)):
@@ -86,10 +88,10 @@ class NativeEngine:
         if wsl:
             args=["wsl.exe","-d",wsl,"--cd",linux_path(ROOT),"--","env"]
             args += [key+"="+str(value) for key,value in values.items()]
-            args += [linux_path(engine),"1","8"]
+            args += [linux_path(engine),str(cache_per_layer),str(expert_bits)]
             child_env=None
         else:
-            args=[str(Path(engine).resolve()),"1","8"]
+            args=[str(Path(engine).resolve()),str(cache_per_layer),str(expert_bits)]
             child_env=os.environ.copy(); child_env.update(values)
         self.process=subprocess.Popen(args,cwd=ROOT,env=child_env,stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,stderr=subprocess.PIPE)

@@ -184,6 +184,7 @@ static pthread_mutex_t g_pilot_mx = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t g_pilot_cv = PTHREAD_COND_INITIALIZER; /* broadcast on every publish */
 static struct { int l, e; } pilot_q[4096];
 static volatile unsigned pilot_r = 0, pilot_w = 0;
+static uint64_t pilot_loads = 0;
 static Model *pilot_m = NULL;
 static int g_pilot = 0;
 static int g_wide  = 1;  /* IMPROVEMENT 4: top-K * g_wide candidates prefetched */
@@ -1936,6 +1937,7 @@ static void pilot_realload(Model *m, int layer, int eid) {
     m->is_queued[layer * c->n_experts + eid] = 0;
     pthread_cond_broadcast(&g_pilot_cv);
     pthread_mutex_unlock(&g_pilot_mx);
+    __atomic_fetch_add(&pilot_loads, 1, __ATOMIC_RELAXED);
 }
 
 static void *pilot_worker(void *arg) {
@@ -1953,6 +1955,14 @@ static void *pilot_worker(void *arg) {
         __atomic_store_n(&pilot_r, r + 1, __ATOMIC_RELEASE);
     }
     return NULL;
+}
+
+/* A completed request owns the work it queued, including unused prefetches.
+ * The worker publishes r+1 only AFTER pilot_realload returns. */
+static void pilot_wait_idle(void) {
+    if(g_pilot<=0)return;
+    while(__atomic_load_n(&pilot_r,__ATOMIC_ACQUIRE)!=__atomic_load_n(&pilot_w,__ATOMIC_ACQUIRE))
+        usleep(100);
 }
 
 static void pilot_prefetch(Model *m, int lnext, const float *x, int S) {
@@ -2439,6 +2449,9 @@ static int olm_serve_start(Model *m, Tok *T, SReq *q, int ctx_cap, int **ids_out
 
 static int serve_one(Model *m, Tok *T, SReq *q, int ctx_cap) {
     Cfg *c = &m->c;
+    unsigned pw0 = __atomic_load_n(&pilot_w, __ATOMIC_ACQUIRE);
+    unsigned pr0 = __atomic_load_n(&pilot_r, __ATOMIC_ACQUIRE);
+    uint64_t pl0 = __atomic_load_n(&pilot_loads, __ATOMIC_RELAXED);
     int *ids = NULL, np = 0; float *logit = NULL; OlmReqClock clk;
     if (!olm_serve_start(m, T, q, ctx_cap, &ids, &np, &logit, &clk)) return 0;
     double t0 = clk.t0;
@@ -2470,7 +2483,12 @@ static int serve_one(Model *m, Tok *T, SReq *q, int ctx_cap) {
         logit = step(m, &nt, 1, hist_len - 1);
     }
     free(logit);
+    pilot_wait_idle();
     double dt = now_s() - t0;
+    fprintf(stderr, "[olmoe PILOT] turn %s: queued=%u completed=%u loads=%llu\n", q->id,
+        __atomic_load_n(&pilot_w, __ATOMIC_ACQUIRE) - pw0,
+        __atomic_load_n(&pilot_r, __ATOMIC_ACQUIRE) - pr0,
+        (unsigned long long)(__atomic_load_n(&pilot_loads, __ATOMIC_RELAXED) - pl0));
     double tot = (double)(m->hits - h0 + m->miss - m0);
     ColiServeDone done = {
         .completion_tokens = gen,

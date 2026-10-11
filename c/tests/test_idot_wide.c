@@ -2,6 +2,9 @@
  * Default: exactness/dispatch tests only. --bench: paired CPU matrix timings,
  * NOT a model/token-speed claim. Compile -march=native on the target host. */
 #define _POSIX_C_SOURCE 200809L
+#ifdef __APPLE__
+#define _DARWIN_C_SOURCE 1
+#endif
 #include <assert.h>
 #include <stdint.h>
 #include <stdlib.h>

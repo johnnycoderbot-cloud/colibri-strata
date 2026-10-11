@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Measure native CPU optimizations, then isolate independent parallel heads.
+"""Measure native CPU optimizations, independent heads and pretrained MTP.
 
 The stock/candidate study keeps heads OFF and prompt lookup ON. Optional
 same-binary studies disable one new knob at a time; the optional head study
 compares the SAME optimized engine and settings with its bank OFF/ON.
+The MTP depth study enables the same cell in both arms and changes only the
+maximum draft count; telemetry records what the adaptive gate actually chose.
 Correctness requests carry token/logprob evidence. Timed requests omit that
 channel. Processes execute one arm at a time in alternating order.
 
@@ -29,8 +31,9 @@ except ImportError:
 
 MAX_PROMPTS_BYTES = 256 * 1024
 MAX_PROMPT_BYTES = 65536
-STUDY_IDS = ("stock", "rows", "group", "wide", "heads", "mtp", "stock-mtp")
+STUDY_IDS = ("stock", "rows", "group", "wide", "heads", "mtp", "stock-mtp", "mtp-depth")
 MTP_STATS = re.compile(r"\[qwen36 MTP\] turn (\S+): (.*)")
+MTP_DEPTHS = re.compile(r"\[qwen36 MTP depths\] turn (\S+): depth1=(\d+) depth2=(\d+) depth3=(\d+)")
 
 
 def mtp_statistics(lines):
@@ -48,6 +51,38 @@ def mtp_statistics(lines):
         if cells["accepted"] > cells["drafts"] or cells["ended_mid_verify"] not in (0, 1):
             raise ValueError("inconsistent native MTP statistics")
         result[match[1]] = cells
+    return result
+
+
+def mtp_depth_statistics(lines):
+    result={}
+    for line in lines:
+        if not line.startswith("[qwen36 MTP depths]"): continue
+        match=MTP_DEPTHS.fullmatch(line.strip())
+        if not match or match[1] in result: raise ValueError("invalid or duplicate MTP depth statistics")
+        result[match[1]]={str(depth):bounded_int(int(match[depth+1]),0,2**63-1,"depth count")
+                          for depth in (1,2,3)}
+    return result
+
+
+def mtp_acceptance_statistics(lines):
+    result={}
+    for line in lines:
+        match=re.fullmatch(r"\[qwen36 MTP gate\] turn (\S+): .*\| judged/accepted by offset(.*?) \| declined=(\d+) probes=(\d+)",line.strip())
+        if not match: continue
+        if match[1] in result: raise ValueError("duplicate MTP gate statistics")
+        offsets={}
+        cells=re.findall(r" (\d+):(\d+)/(\d+)",match[2])
+        if match[2] != "".join(f" {o}:{j}/{a}" for o,j,a in cells):
+            raise ValueError("invalid MTP offset statistics")
+        for offset,judged,accepted in cells:
+            bounded_int(int(offset),2,4,"MTP offset")
+            j=bounded_int(int(judged),0,2**63-1,"judged");a=bounded_int(int(accepted),0,j,"accepted")
+            if offset in offsets: raise ValueError("duplicate MTP offset")
+            offsets[offset]={"judged":j,"accepted":a}
+        result[match[1]]={"offsets":offsets,
+                         "declined":bounded_int(int(match[3]),0,2**63-1,"declined"),
+                         "probes":bounded_int(int(match[4]),0,2**63-1,"probes")}
     return result
 
 
@@ -132,7 +167,7 @@ def common_env(args):
             "COLI_TIMERS": "1" if args.phase_timers else "0"}
 
 
-def arm(args, name, engine, rows, projection_group, heads=False, source_kind=None, wide=None, mtp=False):
+def arm(args, name, engine, rows, projection_group, heads=False, source_kind=None, wide=None, mtp=False, mtp_depth=None):
     env = common_env(args)
     wide = args.wide if wide is None else wide
     env.update(COLI_IDOT_ROWS=str(rows), QWEN_PROJECTION_GROUP=str(projection_group), COLI_IDOT_WIDE=str(wide))
@@ -141,11 +176,13 @@ def arm(args, name, engine, rows, projection_group, heads=False, source_kind=Non
         env["COLI_STRATA_INPUT"] = args.head_input
     if mtp:
         env["Q36_MTP"] = linux_path(args.mtp_dir) if args.wsl else str(args.mtp_dir)
+        env["Q36_MTP_DRAFTS"] = str(args.mtp_drafts if mtp_depth is None else mtp_depth)
     return {"name": name, "engine": str(engine), "source_kind": source_kind or args.optimized_source_kind,
             "source_kind_verification": "caller-supplied binary provenance; file hashes recorded",
             "rows": rows, "projection_group": projection_group, "wide": wide,
             "wide_setting_scope": "requested kernel setting; unsupported ISA uses the ordinary native kernel",
-            "parallel_heads": heads, "pretrained_mtp": mtp, "env": env}
+            "parallel_heads": heads, "pretrained_mtp": mtp,
+            "mtp_maximum_depth": int(env["Q36_MTP_DRAFTS"]) if mtp else None, "env": env}
 
 
 def study_plan(args):
@@ -177,6 +214,10 @@ def study_plan(args):
                                 "purpose": "unchanged stock Colibri against the complete CPU fork with authentic pretrained sequential MTP",
                                 "control": arm(args, "stock", args.baseline, 0, 0, source_kind=args.baseline_source_kind, wide=0),
                                 "candidate": arm(args, "optimized-with-mtp", args.optimized, args.rows, args.projection_group, mtp=True)}
+        studies["mtp-depth"] = {"id": "mtp-depth", "name": "pretrained-mtp-depth-comparison",
+                                "purpose": "same decoder with adaptive gate enabled; maximum one draft versus the requested maximum depth",
+                                "control": arm(args, "mtp-maximum-one", args.optimized, args.rows, args.projection_group, mtp=True, mtp_depth=1),
+                                "candidate": arm(args, "mtp-maximum-candidate", args.optimized, args.rows, args.projection_group, mtp=True)}
     selected = args.studies
     if selected is None:
         selected = ["stock"]
@@ -321,18 +362,34 @@ def run_study(args, prompts, definition, factory, report, checkpoint=lambda: Non
             result[side + "_ready"] = getattr(engine, "ready_line", None)
         if result["status"] == "complete" and result["candidate"]["pretrained_mtp"]:
             try:
-                observed = mtp_statistics(result["candidate_stderr"])
-                required = []
-                for rows in (result["fresh_process_requests"], result["correctness"], result["warmups"], result["records"]):
-                    for row in rows:
-                        value = row["candidate"]
-                        evidence = observed.get(value["request_id"])
-                        if evidence is None or evidence["failures"]:
-                            raise RuntimeError("missing or failed authentic MTP execution evidence")
-                        value["native_mtp_statistics"] = evidence
-                        required.append(evidence)
-                if not any(cell["bank_calls"] > 0 for cell in required):
-                    raise RuntimeError("MTP study did not execute the pretrained cell")
+                executed={}
+                for side in ("control","candidate"):
+                    if not result[side]["pretrained_mtp"]: continue
+                    observed=mtp_statistics(result[side+"_stderr"])
+                    depths=mtp_depth_statistics(result[side+"_stderr"])
+                    acceptance=mtp_acceptance_statistics(result[side+"_stderr"])
+                    required=[]
+                    for rows in (result["fresh_process_requests"], result["correctness"], result["warmups"], result["records"]):
+                        for row in rows:
+                            value=row[side];rid=value["request_id"];evidence=observed.get(rid)
+                            if evidence is None or evidence["failures"]:
+                                raise RuntimeError("missing or failed authentic MTP execution evidence")
+                            value["native_mtp_statistics"]=evidence;required.append(evidence)
+                            if definition["id"]=="mtp-depth" and rid not in acceptance:
+                                raise RuntimeError("missing source-specific MTP acceptance evidence")
+                            if rid in acceptance:value["native_mtp_acceptance"]=acceptance[rid]
+                            chosen=depths.get(rid)
+                            if definition["id"]=="mtp-depth" and chosen is None:
+                                raise RuntimeError("missing actual MTP depth evidence")
+                            if chosen is not None:
+                                if sum(chosen.values())!=evidence["bank_calls"]-evidence["failures"] or any(
+                                        count for depth,count in chosen.items() if int(depth)>result[side]["mtp_maximum_depth"]):
+                                    raise RuntimeError("MTP depth counts disagree with calls or configured maximum")
+                                value["native_mtp_actual_depths"]=chosen
+                    if not any(cell["bank_calls"]>0 for cell in required):
+                        raise RuntimeError("MTP study did not execute the pretrained cell")
+                    executed[side]=True
+                result["pretrained_mtp_execution_by_arm"]=executed
                 result["pretrained_mtp_executed"] = True
                 result["native_mtp_statistics_scope"] = {
                     "bank_calls_bank_seconds_failures": "pretrained MTP cell only",
@@ -366,10 +423,10 @@ def validate_args(args):
     if args.studies is not None:
         selected = args.studies.split(",")
         if not selected or len(selected) > len(STUDY_IDS) or len(set(selected)) != len(selected) or any(key not in STUDY_IDS for key in selected):
-            raise ValueError("studies must be distinct comma-separated IDs: stock,rows,group,wide,heads,mtp")
+            raise ValueError("studies must be distinct comma-separated IDs: " + ",".join(STUDY_IDS))
         if "heads" in selected and not args.heads:
             raise ValueError("the heads study requires --heads")
-        if any(key in selected for key in ("mtp", "stock-mtp")) and not args.mtp_dir:
+        if any(key in selected for key in ("mtp", "stock-mtp", "mtp-depth")) and not args.mtp_dir:
             raise ValueError("the mtp study requires --mtp-dir")
         args.studies = selected
     for label in ("baseline_source_kind", "optimized_source_kind"):
@@ -420,7 +477,7 @@ def main(argv=None, *, engine_factory=None):
     parser.add_argument("--projection-group", "--shared-act", dest="projection_group", type=int, choices=(0, 1), default=1)
     parser.add_argument("--ablate-knobs", action="store_true")
     parser.add_argument("--ablate-wide", action="store_true")
-    parser.add_argument("--studies", help="select comma-separated studies: stock,rows,group,wide,heads,mtp,stock-mtp; overrides ablation flags")
+    parser.add_argument("--studies", help="select comma-separated studies: stock,rows,group,wide,heads,mtp,stock-mtp,mtp-depth; overrides ablation flags")
     parser.add_argument("--phase-timers", action="store_true", help="enable identical native phase timers in both arms; adds instrumentation")
     parser.add_argument("--threads", type=int, default=8)
     parser.add_argument("--tokens", type=int, default=64)

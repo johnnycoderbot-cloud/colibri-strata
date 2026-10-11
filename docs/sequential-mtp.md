@@ -62,9 +62,34 @@ c/coli run --model NATIVE_MODEL --gpu none --mtp-dir NEW_MTP_DIR \
 
 Sidecar conversion is explicit, preserves source/native assets, refuses existing
 output directories, and binds exact target bytes/precision/tap to the sidecar's
-payload digest. Default target conversion still skips MTP. Depths 2/3 are
-implemented and passed actual model-output/hidden-state correctness checks;
-the current performance claim is for depth 1 only.
+payload digest. Default target conversion still skips MTP. Depths 2/3 pass
+actual model-output/hidden-state correctness checks. The default remains a
+maximum of one draft after the deeper-window comparisons below.
+
+## Measured draft-depth choice
+
+Both arms used the same pretrained cell and optimized binary, with the adaptive
+gate enabled. Only the maximum draft count changed; a maximum of three does not
+mean every proposal has three drafts. Native telemetry records the actual counts.
+These trials used the same three requests, five alternating pairs each, 64-token
+cap, eight CPU threads and warm OS cache as the one-draft trial. All greedy token
+IDs, logprobs and output hashes matched; assets were unchanged before/after.
+
+| Maximum drafts versus one | Overall paired decode change | Bridge explanation | Python function | Graph search |
+|---|---:|---:|---:|---:|
+| Two | +1.3% | +1.3% | +4.4% | -1.7% |
+| Three | +0.1% | -1.1% | +6.6% | -3.4% |
+
+Maximum three also lost 1.9% on the paired whole-request wall metric. Deeper
+windows help the Python request, but the mixed results do not justify increasing
+the general default. Maximum one retains the previously measured MTP gain.
+The reports include MTP-only acceptance by offset and actual chosen depths;
+their shared verifier totals may also contain existing prompt lookup proposals.
+[Maximum two evidence](../experimental/strata/results/pretrained-mtp-maximum2-vs1.json),
+[maximum three evidence](../experimental/strata/results/pretrained-mtp-maximum3-vs1.json).
+
+To repeat a depth comparison, use the command below with `--studies mtp-depth`
+and `--mtp-drafts 2` or `3`. The control enables MTP with maximum one.
 
 ```sh
 python c/tools/native_optimization_bench.py --baseline BASELINE_ENGINE \

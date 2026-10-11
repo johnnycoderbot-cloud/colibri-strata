@@ -3,11 +3,14 @@
 Portable-core tests are the starting gate. Each task below remains pending until
 its stated evidence exists; model-specific trained heads are separate artifacts.
 
-The first qwen36 CPU adapter and real capture are now implemented and have
-exact real-target rollback/frontier tests. The two-head bank has no clear
-repeatable throughput gain in the regular-Colibri comparison. Other families,
-device paths and a matched Strata run remain pending.
-[Current measurements](../experimental/strata/results/native-cpu-comparison.json)
+The qualified dense qwen36 CPU adapter now uses the authentic pretrained
+sequential MTP cell and passed exact real-target rollback/frontier tests.
+The complete CPU fork measured +15.1% paired decoding speed over unchanged
+Colibri; MTP alone measured +13.1%. Maximum-one drafting remains the default
+after workload-dependent depth-two/three trials. The separate locally fitted
+independent heads remain experimental and measured slower on fresh requests.
+Other families, device paths and a matched Strata run remain pending.
+[Current measurements and qualification](sequential-mtp.md)
 
 Tracked on GitHub:
 
@@ -25,7 +28,8 @@ OLMoE's all-row readout, then hybrid and sliding-window families. Every adapter:
 - Identifies the exact checkpoint revision, tokenizer digest, hidden tap and
   quantization; refuses mismatched packs even when dimensions coincide.
 - Captures the immutable hidden vector from the same target pass used for offset1,
-  predicts contiguous future offsets independently, and passes them to the target.
+  predicts contiguous future offsets using a checkpoint-qualified pretrained MTP
+  cell or independently trained heads, and passes them to the target.
 - Snapshots KV, position metadata, rings, recurrence, convolution and device mirrors.
   Rejected rows must leave no persistent mutations. Tests force rejection at every
   depth, EOS, stop, token budgets, prefix reuse and allocation/backend failures.
