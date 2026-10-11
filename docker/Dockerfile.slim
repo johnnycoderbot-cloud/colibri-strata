@@ -40,6 +40,7 @@ WORKDIR /app
 COPY --from=build /src/c/colibri            ./colibri
 COPY c/coli c/version.py c/openai_server.py c/v4_dsml.py c/v41_dsml.py c/family_registry.py c/resource_plan.py c/doctor.py c/autotune.py c/image_engine.py c/term_image.py ./
 COPY c/tools/ ./tools/
+COPY c/stream_runtime.py c/stream_models.py c/stream_media.py c/runtime_cli.py c/runtime_gateway.py ./
 
 ENV COLI_MODEL=/model \
     COLI_ENGINE=/app/colibri \

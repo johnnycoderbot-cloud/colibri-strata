@@ -64,3 +64,33 @@
   allsourcebits4/8/16 physical placement/parity passed; no physicalNPU/TPU available.
 - Precision/hardware hardening slice complete; speech/translation/camera runtime
   implementation remains tracked separately at GitHubissue6.
+
+- Streaming expansion: user selected English, camera/image/video upscaling, text
+  inference and actual accelerator execution. Three production graph families
+  now use the existing registry, CLI and authenticated gateway with OpenVINO.
+- Native in-session ownership: /root/memory_primitives runtime + gateway tests;
+  /root/parallel_heads real model/media adapters; /root registry/CLI/API/install;
+  /root/architecture independent boundary review. No detached/mock team runtime.
+- Review corrected fixed-budget registry lookup, script HTTP error-class mismatch,
+  native flag loss, duplicate MIME parameters and palette-alpha conversion.
+  Implementation review approved; actual model/process-exit gate still pending.
+- Windows runtime28 (one POSIX skip), gateway17, model11 (real CPU IR), CLI6,
+  registry59 and installation closure passed. WSL filesystem/metadata9 passed,
+  including FIFO and alias rejection. Native HTTP framing8 and gateway suite passed.
+- Actual trained GPU camera and text gateway replays passed with authentication
+  refusal checks. Actual GPU video export retained all three fixture frames and
+  audio; VFR timestamps qualified separately. No microphone/camera opened.
+- Speech checkpoint upgraded to pinned stateful export after actual beam_idx
+  failure. Replay fixture conversion corrected after its transcript check failed.
+  Windows GPU GenAI interpreter-exit/callback behavior is under investigation.
+- TPU/AIPU production model adapters and physical NPU/power qualifications remain
+  explicitly pending; prior head/vendor-image probes do not qualify these models.
+- Final trained replay: correct full JFK on CPU/GPU; text answers/stateless request
+  isolation and trained 4x SR parity passed. Actual CPU speech gateway exits cleanly.
+  Windows GenAI2026.4.1 speech GPU fails interpreter teardown despite correct text;
+  explicit request now refuses and AUTO reports restriction/selects CPU. Text/SR
+  GPU stays enabled. SR f16 hint is optional with fixture-specific error bounds.
+- Final new runtime test inventory:28 runtime,12 model/media,17 gateway,6 CLI.
+  Native gateway425, registry59, HTTP framing8 and package closure passed. Optional
+  PNG/video tests skip cleanly in the dependency-free native gate; full optional
+  graph CI runs them. Public replay evidence excludes private SDK paths/capture.

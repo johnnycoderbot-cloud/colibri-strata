@@ -1,0 +1,296 @@
+{
+  "schema": "colibri.stream-model-replay/v1",
+  "fixture_scope": "public audio and generated image; no capture",
+  "runtime_versions": {
+    "openvino": "2026.4.1-22982-e213a147257-releases/2026/4",
+    "openvino_genai": "2026.4.1.0-3408-ab01d1771e4"
+  },
+  "available_devices": [
+    "CPU",
+    "GPU"
+  ],
+  "models": {
+    "speech": {
+      "precision": "int8",
+      "source": "OpenVINO/whisper-tiny-int8-ov",
+      "revision": "a850762d97243dee30f46ca309720541af619ab0",
+      "asset_bytes": 48792323,
+      "declared_base_bytes": 402653184,
+      "asset_sha256_verified": true,
+      "devices": {
+        "CPU": {
+          "initialization_seconds": 0.9513716000074055,
+          "backend": "openvino_genai",
+          "requested_device": "CPU",
+          "selected_device": "CPU",
+          "execution_devices_verified": false,
+          "text": " And so my fellow Americans ask not what your country can do for you ask what you can do for your country.",
+          "language": "en",
+          "target_language": "en",
+          "expected_phrase_present": true,
+          "duration_seconds": 11.0,
+          "timing": {
+            "calls": 3,
+            "seconds": [
+              0.19496159997652285,
+              0.1943551999866031,
+              0.1840329999977257
+            ],
+            "median_seconds": 0.1943551999866031,
+            "min_seconds": 0.1840329999977257,
+            "max_seconds": 0.19496159997652285
+          },
+          "translation_to_english": {
+            "text": " And so my fellow Americans ask not what your country can do for you ask what you can do for your country.",
+            "target_language": "en",
+            "fixture_language": "en",
+            "scope": "English-source task dispatch smoke; not a cross-language quality benchmark"
+          },
+          "production_enabled": true,
+          "process_exit_qualified": true,
+          "bounded_subprocess_exit_code": 0,
+          "recognition_reference_check": "passed"
+        },
+        "GPU": {
+          "initialization_seconds": 17.097851600003196,
+          "backend": "openvino_genai",
+          "requested_device": "GPU",
+          "selected_device": "GPU",
+          "execution_devices_verified": false,
+          "text": " And so my fellow Americans ask not what your country can do for you ask what you can do for your country.",
+          "language": "en",
+          "target_language": "en",
+          "expected_phrase_present": true,
+          "duration_seconds": 11.0,
+          "timing": {
+            "calls": 3,
+            "seconds": [
+              1.7069555000052787,
+              0.292277100001229,
+              0.30059490000712685
+            ],
+            "median_seconds": 0.30059490000712685,
+            "min_seconds": 0.292277100001229,
+            "max_seconds": 1.7069555000052787
+          },
+          "translation_to_english": {
+            "text": " And so my fellow Americans ask not what your country can do for you ask what you can do for your country.",
+            "target_language": "en",
+            "fixture_language": "en",
+            "scope": "English-source task dispatch smoke; not a cross-language quality benchmark"
+          },
+          "production_enabled": false,
+          "process_exit_qualified": false,
+          "recognition_reference_check": "passed",
+          "qualification": "refused on affected Windows SDK pending clean interpreter shutdown"
+        }
+      },
+      "local_cpu_over_gpu_elapsed_ratio": 0.6465685212290532,
+      "shutdown_qualification": {
+        "affected_platform": "Windows",
+        "affected_sdk": "OpenVINO GenAI 2026.4.1",
+        "bounded_full_adapter_gpu_exit": "timeout after close returned and before interpreter termination",
+        "bounded_explicit_global_shutdown_gpu_exit": "timeout",
+        "direct_sdk_temporary_core_exit_code": 0,
+        "direct_sdk_owned_core_exit_code": 0,
+        "cpu_full_adapter_exit_code": 0,
+        "production_policy": "explicit speech GPU refused; AUTO skips affected GPU and selects available CPU; text/SR GPU remain enabled",
+        "scope": "speech adapter and reproduced Windows SDK; not a blanket GPU hardware restriction"
+      }
+    },
+    "camera": {
+      "precision": "fp16",
+      "source": "https://storage.openvinotoolkit.org/repositories/open_model_zoo/2023.0/models_bin/1/single-image-super-resolution-1032/FP16/",
+      "revision": "open_model_zoo/2023.0/models_bin/1",
+      "asset_bytes": 151237,
+      "declared_base_bytes": 201326592,
+      "asset_sha256_verified": true,
+      "devices": {
+        "CPU": {
+          "initialization_seconds": 0.07488129998091608,
+          "backend": "openvino",
+          "requested_device": "CPU",
+          "selected_device": "CPU",
+          "execution_devices_verified": true,
+          "width": 960,
+          "height": 540,
+          "scale": 4,
+          "timing": {
+            "calls": 3,
+            "seconds": [
+              0.15125860000262037,
+              0.14281879999907687,
+              0.15254030001233332
+            ],
+            "median_seconds": 0.15125860000262037,
+            "min_seconds": 0.14281879999907687,
+            "max_seconds": 0.15254030001233332
+          },
+          "png_sha256": "9c356e3913bd842b14f2919c5a951bb5ec18ed0dda7f07629ab447125967076d",
+          "bicubic_mean_absolute_difference": 9.480911136831276,
+          "bicubic_max_absolute_difference": 167,
+          "actual_nn_differs_from_bicubic": true
+        },
+        "GPU": {
+          "initialization_seconds": 2.300719000020763,
+          "backend": "openvino",
+          "requested_device": "GPU",
+          "selected_device": "GPU.0",
+          "execution_devices_verified": true,
+          "width": 960,
+          "height": 540,
+          "scale": 4,
+          "timing": {
+            "calls": 3,
+            "seconds": [
+              0.1722412999952212,
+              0.1587007999769412,
+              0.16930030001094565
+            ],
+            "median_seconds": 0.16930030001094565,
+            "min_seconds": 0.1587007999769412,
+            "max_seconds": 0.1722412999952212
+          },
+          "png_sha256": "5881dac6b79a902318636dd72dc214e0da070ebeae939a52fb7770a4e1dfc451",
+          "bicubic_mean_absolute_difference": 9.48091049382716,
+          "bicubic_max_absolute_difference": 167,
+          "actual_nn_differs_from_bicubic": true
+        }
+      },
+      "local_cpu_over_gpu_elapsed_ratio": 0.8934337387047817,
+      "gpu_f16_hint_check": {
+        "inference_precision_hint": "f16",
+        "is_signed_INT16_storage": false,
+        "execution_devices_verified": true,
+        "selected_device": "GPU.0",
+        "width": 960,
+        "height": 540,
+        "timing": {
+          "seconds": [
+            0.1527856000175234,
+            0.15261769999051467,
+            0.15725750001729466
+          ],
+          "median_seconds": 0.1527856000175234
+        },
+        "comparisons_to_f32_hints": {
+          "cpu": {
+            "mean_absolute_pixel_difference": 0.1306301440329218,
+            "max_absolute_pixel_difference": 6
+          },
+          "gpu": {
+            "mean_absolute_pixel_difference": 0.13062950102880658,
+            "max_absolute_pixel_difference": 6
+          }
+        },
+        "fixture_error_bound": {
+          "mean_absolute_pixel_difference": 0.5,
+          "max_absolute_pixel_difference": 8
+        },
+        "within_fixture_error_bound": true
+      }
+    },
+    "text": {
+      "precision": "int4",
+      "source": "OpenVINO/Qwen2-0.5B-Instruct-int4-ov",
+      "revision": "e1152fa9f77f3fa6a3f19b4210529a65e549e72b",
+      "asset_bytes": 385381841,
+      "declared_base_bytes": 939524096,
+      "asset_sha256_verified": true,
+      "devices": {
+        "CPU": {
+          "initialization_seconds": 2.0962078999727964,
+          "backend": "openvino_genai",
+          "requested_device": "CPU",
+          "selected_device": "CPU",
+          "execution_devices_verified": false,
+          "raw_text": "Paris.",
+          "raw_timing": {
+            "calls": 3,
+            "seconds": [
+              0.11923200002638623,
+              0.10160560000804253,
+              0.10846280000987463
+            ],
+            "median_seconds": 0.10846280000987463,
+            "min_seconds": 0.10160560000804253,
+            "max_seconds": 0.11923200002638623
+          },
+          "prompt_token_count": 12,
+          "max_new_tokens": 24,
+          "chat_text": "Paris.",
+          "chat_contains_paris": true,
+          "independent_second_chat_text": "4",
+          "prior_marker_absent_in_second_reply": true,
+          "stateful_chat": false
+        },
+        "GPU": {
+          "initialization_seconds": 17.71719490000396,
+          "backend": "openvino_genai",
+          "requested_device": "GPU",
+          "selected_device": "GPU",
+          "execution_devices_verified": false,
+          "raw_text": "Paris.",
+          "raw_timing": {
+            "calls": 3,
+            "seconds": [
+              0.11193990000174381,
+              0.11858350000693463,
+              0.11515860000508837
+            ],
+            "median_seconds": 0.11515860000508837,
+            "min_seconds": 0.11193990000174381,
+            "max_seconds": 0.11858350000693463
+          },
+          "prompt_token_count": 12,
+          "max_new_tokens": 24,
+          "chat_text": "Paris.",
+          "chat_contains_paris": true,
+          "independent_second_chat_text": "4",
+          "prior_marker_absent_in_second_reply": true,
+          "stateful_chat": false
+        }
+      },
+      "local_cpu_over_gpu_elapsed_ratio": 0.9418558405979416
+    }
+  },
+  "errors": [
+    {
+      "family": "speech",
+      "device": "GPU",
+      "kind": "shutdown_qualification_failed",
+      "production_guard_enabled": true
+    }
+  ],
+  "timing_scope": "one warm-up then three serial warm calls per operation; local elapsed time, not universal speedup",
+  "fixtures": {
+    "audio": {
+      "source": "https://raw.githubusercontent.com/openai/whisper/main/tests/jfk.flac",
+      "flac_sha256": "63a4b1e4c1dc655ac70961ffbf518acd249df237e5a0152faae9a4a836949715",
+      "wav_sha256": "13f2ca57b38d7feda51a0e623612cefffe67238c69b1fbd49fef6ee7e0209ec0",
+      "sample_rate": 16000,
+      "channels": 1,
+      "sample_count": 176000,
+      "duration": 11.0,
+      "encoding": "pcm16",
+      "conversion": "ffmpeg reference anti-aliased 44.1k stereo to 16k mono PCM16"
+    },
+    "image": {
+      "source": "generated deterministic RGB pattern",
+      "width": 240,
+      "height": 135,
+      "sha256": "667e0f9ba71105bf640eb3b385039e6122ccca07c9810511f9d7ee36bba2c7f4"
+    }
+  },
+  "camera_cpu_gpu_comparison": {
+    "mean_absolute_pixel_difference": 4.501028806584362e-06,
+    "max_absolute_pixel_difference": 1
+  },
+  "qualification_notes": [
+    "Canonical anti-aliased public JFK waveform recognized correctly on CPU and GPU; initial naive fixture resampling was discarded.",
+    "English-source translate task is a dispatch smoke test, not a cross-language quality benchmark.",
+    "GenAI constructor-selected devices are reported without claiming execution-device proof.",
+    "GPU does not universally reduce end-to-end latency; timings include media and token processing.",
+    "SR f16 is a floating-point precision hint, distinct from signed INT16 quantized storage; error bounds are fixture-specific."
+  ]
+}

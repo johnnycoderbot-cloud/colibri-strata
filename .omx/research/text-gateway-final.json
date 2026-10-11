@@ -1,0 +1,69 @@
+{
+  "schema": "colibri.actual-gateway-replay/v1",
+  "model": "colibri-text_graph",
+  "device": "GPU",
+  "endpoint": "/v1/chat/completions",
+  "http_status": 200,
+  "elapsed_seconds": 0.15905310001107864,
+  "auth_refusal_passed": true,
+  "runtime": {
+    "adapter": "text_openvino",
+    "backend": "openvino_genai",
+    "device": "GPU",
+    "requested_device": "GPU",
+    "precision": "int4",
+    "runtime_precision": "unknown",
+    "execution_devices_verified": false,
+    "device_source": "explicit-genai-constructor",
+    "auto_attempts": [],
+    "model_id": "colibri-text_graph",
+    "stateful_chat": false,
+    "max_new_tokens": 256,
+    "max_prompt_tokens": 2048,
+    "compiled_device": "GPU",
+    "executed_device": null,
+    "runtime_kind": "graph",
+    "family": "text_graph",
+    "modality": "text",
+    "max_input_bytes": 65536,
+    "max_output_bytes": 1048576,
+    "memory_budget_bytes": 1073741824,
+    "asset_bytes": 385381841,
+    "base_estimated_bytes": 939524096,
+    "session_estimated_bytes": 0,
+    "memory_estimates_only": true,
+    "active_sessions": 0,
+    "max_sessions": 8,
+    "closing": false,
+    "closed": false
+  },
+  "result": {
+    "id": "chatcmpl_2c5d68cce31f4cc8a3cfd4f633089298",
+    "object": "chat.completion",
+    "created": 1791687271,
+    "model": "colibri-text_graph",
+    "choices": [
+      {
+        "index": 0,
+        "finish_reason": null,
+        "message": {
+          "role": "assistant",
+          "content": "Paris"
+        }
+      }
+    ],
+    "runtime": {
+      "text": "Paris",
+      "backend": "openvino_genai",
+      "device": "GPU",
+      "execution_devices_verified": false,
+      "prompt_token_count": 31,
+      "max_new_tokens": 24,
+      "stateful_chat": false,
+      "model_id": "colibri-text_graph",
+      "requested_device": "GPU",
+      "compiled_device": "GPU",
+      "executed_device": null
+    }
+  }
+}

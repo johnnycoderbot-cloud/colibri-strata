@@ -24,6 +24,7 @@ import uuid
 import v4_dsml                      # vendored DeepSeek V4 DSML reference primitives
 import v41_dsml                     # ...and V4.1's, whose tag names differ by a space
 import image_engine                 # the qwenimage serve protocol, PNG and request rules
+from runtime_gateway import RuntimeRoutes, is_graph_engine
 from family_registry import (FamilyConfigError, UnknownFamilyError, family_by_id,
                              display_for, family_ids, resolve_model)
 from family_registry import default_model_id as registry_default_model_id
@@ -6094,6 +6095,8 @@ class APIServer(ThreadingHTTPServer):
         entry = model_object(self.model_id, self.created)
         entry["input_modalities"] = self.input_modalities()
         entry["capabilities"] = self.capabilities()
+        if is_graph_engine(self.engine):
+            entry["runtime"] = self.engine.info()
         if is_image_engine(self.engine):
             info = getattr(self.engine, "info", None) or {}
             entry["image"] = {key: info.get(key) for key in IMAGE_OPTION_KEYS}
@@ -6114,6 +6117,9 @@ class APIServer(ThreadingHTTPServer):
         """What the served model does, for /v1/models and /health: an image model
         draws (image_generation); every text engine answers POST /v1/systemone
         (systemone), and a decision engine does only that (decision)."""
+        if is_graph_engine(self.engine):
+            return {"text": ["chat", "completion"], "audio": ["transcription", "speech_to_english", "audio_stream"],
+                    "camera": ["image_upscale", "camera_stream"]}[self.engine.modality]
         if is_image_engine(self.engine):
             return ["image_generation"]
         if engine_decides(self.engine) and not engine_chats(self.engine):
@@ -6127,6 +6133,9 @@ class APIServer(ThreadingHTTPServer):
             name = getattr(self, "display_name", None) or family_by_id(ARCH).display_name
         except Exception:
             name = self.model_id
+        if is_graph_engine(self.engine):
+            return {"name": self.model_id, "description": ", ".join(self.capabilities()),
+                    "release_date": time.strftime("%Y-%m-%d", time.gmtime(self.created))}
         return {"name": self.model_id,
                 "description": f"{name}, served by colibri; POST /v1/systemone answers typed questions.",
                 "release_date": time.strftime("%Y-%m-%d", time.gmtime(self.created))}
@@ -6139,6 +6148,8 @@ class APIServer(ThreadingHTTPServer):
         the engine alone is not either (a tower the gateway cannot feed is no
         modality). An engine that announced nothing is text: the card under-claims
         rather than promising a picture nobody checked."""
+        if is_graph_engine(self.engine):
+            return ["image" if self.engine.modality == "camera" else self.engine.modality]
         modalities = ["text"]
         if family_by_id(ARCH).capabilities.image and getattr(self.engine, "vision", None) is True:
             modalities.append("image")
@@ -6284,7 +6295,8 @@ class _DeadlineReader:
         return getattr(self._raw, name)
 
 
-class APIHandler(BaseHTTPRequestHandler):
+class APIHandler(RuntimeRoutes, BaseHTTPRequestHandler):
+    api_error = APIError
     protocol_version = "HTTP/1.1"
     # TCP_NODELAY on every connection, set in setup(). A response is the header
     # block and the body in two writes; with Nagle on, the body waits for the
@@ -6487,7 +6499,7 @@ class APIHandler(BaseHTTPRequestHandler):
                 "host when the bind is already public." % (name or "(empty)", name or "<host>"),
                 None, "forbidden")
 
-    def read_json(self):
+    def read_raw_body(self):
         # No transfer decoder lives here: accepting TE+CL would choose CL even
         # though HTTP gives TE precedence. Multiple CL fields are likewise not
         # a boundary we should guess. Refuse before engine work and never reuse
@@ -6509,6 +6521,13 @@ class APIHandler(BaseHTTPRequestHandler):
         # Only a full read leaves nothing to drain; a short read means the peer went away
         # mid-body, and the drain will notice the EOF and close (#597 item 3).
         self._body_read = len(raw) == length
+        if not self._body_read:
+            self.close_connection = True
+            raise APIError(400, "Request body ended before Content-Length.")
+        return raw
+
+    def read_json(self):
+        raw = self.read_raw_body()
         try:
             body = json.loads(raw)
         except (json.JSONDecodeError, UnicodeDecodeError):
@@ -6603,6 +6622,8 @@ class APIHandler(BaseHTTPRequestHandler):
                     hwinfo = getattr(self.server.engine, "hwinfo", None) if self.server.engine else None
                     if hwinfo: payload["hwinfo"] = hwinfo
                     payload["capabilities"] = self.server.capabilities()
+                    if is_graph_engine(self.server.engine):
+                        payload["runtime"] = self.server.engine.info()
                     if is_image_engine(self.server.engine):
                         payload["image"] = dict(getattr(self.server.engine, "info", None) or {})
                 self.send_json(200, payload, request_id)
@@ -6634,6 +6655,8 @@ class APIHandler(BaseHTTPRequestHandler):
             if self.serve_static(path):
                 return
             self.require_auth()
+            if is_graph_engine(self.server.engine) and self.runtime_get(path, request_id):
+                return
             if path == "/v1/models":
                 # `data` is OpenAI's list; `models` is Jev's (name, description,
                 # release_date), which the TypeSafe SDKs' models.list() reads.
@@ -6666,7 +6689,7 @@ class APIHandler(BaseHTTPRequestHandler):
             self._check_host()
             self.require_auth()
             try:
-                body = self.read_json()
+                body = self.read_runtime_body() if is_graph_engine(self.server.engine) else self.read_json()
             except TimeoutError:
                 # Only request intake is on this deadline. A later timeout
                 # from the engine keeps the existing structured 500 response.
@@ -6678,6 +6701,9 @@ class APIHandler(BaseHTTPRequestHandler):
             # served model answers whatever name was asked for.
             if path != "/v1/systemone":
                 self.check_model(body)
+            if is_graph_engine(self.server.engine):
+                self.runtime_post(path, body, request_id)
+                return
             if is_image_engine(self.server.engine) and path in TEXT_ENDPOINTS:
                 raise APIError(400, f"`{self.server.model_id}` is an image generation model and "
                                     "does not chat: POST /v1/images/generations instead.",
@@ -8166,7 +8192,8 @@ class APIHandler(BaseHTTPRequestHandler):
 
 def serve(model, host="127.0.0.1", port=8000, model_id=None, api_key=None,
           cap=None, max_tokens=1024, engine=None, env=None, cors_origins=None,
-          max_queue=8, queue_timeout=300, kv_slots=1, allowed_hosts=(), family=None):
+          max_queue=8, queue_timeout=300, kv_slots=1, allowed_hosts=(), family=None,
+          device="AUTO", memory_budget_bytes=1 << 30):
     if not 1 <= max_tokens:
         raise ValueError("max_tokens must be positive")
     if not 1 <= port <= 65535:
@@ -8204,7 +8231,7 @@ def serve(model, host="127.0.0.1", port=8000, model_id=None, api_key=None,
         family = pending_family or resolve_model(model).descriptor
         global ARCH, CHAT_FLAVOR
         ARCH = family.id
-        CHAT_FLAVOR = detect_chat_flavor(family.id, model)
+        CHAT_FLAVOR = detect_chat_flavor(family.id, model) if family.runtime_kind == "native" else None
         if CHAT_FLAVOR:
             print(f"[gateway] {family.id} engine, {CHAT_FLAVOR} chat template "
                   "(from the checkpoint's chat_template.jinja)", file=sys.stderr)
@@ -8223,7 +8250,11 @@ def serve(model, host="127.0.0.1", port=8000, model_id=None, api_key=None,
         if kv_slots > family.limits.max_kv_slots:
             raise ValueError(f"{family.id} engine supports at most "
                              f"{family.limits.max_kv_slots} KV slot(s)")
-        if family.modality == "image":
+        if family.runtime_kind == "graph":
+            from stream_runtime import GraphEngine
+            runtime = GraphEngine(model, device=device, memory_budget_bytes=memory_budget_bytes)
+            print("[runtime] " + json.dumps(runtime.info()), file=sys.stderr)
+        elif family.modality == "image":
             # Its own process class: the image engine speaks a line-and-JSON
             # protocol with binary frames, not the text engines' byte stream.
             runtime = image_engine.ImageEngine(engine, model, env=env)
@@ -8243,7 +8274,7 @@ def serve(model, host="127.0.0.1", port=8000, model_id=None, api_key=None,
                       file=sys.stderr)
                 sys.exit(1)
         server.engine = runtime
-        if family.modality != "image":
+        if family.runtime_kind == "native" and family.modality != "image":
             # Said once at start-up, so a checkpoint that declares a tower it does
             # not carry is visible in the log and not only in a client's 400.
             print(f"[gateway] input modalities: {', '.join(server.input_modalities())}"
@@ -8278,7 +8309,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", default=os.environ.get("COLI_MODEL"), required=not os.environ.get("COLI_MODEL"))
     parser.add_argument("--engine")
-    parser.add_argument("--arch", choices=("auto", *family_ids()), default="auto",
+    parser.add_argument("--device", default="AUTO", help="graph runtime: AUTO, CPU, GPU or NPU")
+    parser.add_argument("--memory-budget-mib", type=int, default=1024)
+    parser.add_argument("--arch", choices=("auto", *family_ids(include_graph=True)), default="auto",
                         help="chat-template family; auto reads model_type from the model's config.json")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
@@ -8318,7 +8351,8 @@ def main():
     serve(args.model, args.host, args.port, args.model_id, args.api_key,
           args.cap,args.max_tokens,args.engine,cors_origins=args.cors_origin,
           max_queue=args.max_queue,queue_timeout=args.queue_timeout,kv_slots=args.kv_slots,
-          allowed_hosts=args.allowed_host,family=family)
+          allowed_hosts=args.allowed_host,family=family,device=args.device,
+          memory_budget_bytes=args.memory_budget_mib * 1024 * 1024)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,8 @@
 # ambienti python / cache
 .venv-hardware/
 experimental/strata/generated/
+models-stream/
+outputs-stream/
 c/mio_env/
 __pycache__/
 **/__pycache__/

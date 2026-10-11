@@ -167,6 +167,7 @@ class FamilyDescriptor:
     # "text". A decision family has none of them either: it is served by
     # `coli serve` / `coli web` and answers POST /v1/systemone only.
     modality: str = "text"
+    runtime_kind: str = "native"
     # Where the tokenizer lives, relative to the model directory. A diffusers
     # pipeline keeps it in processor/, not at the root.
     tokenizer_file: str = "tokenizer.json"
@@ -1791,6 +1792,32 @@ FAMILIES = (
 )
 
 
+# Native build/release inventories keep FAMILIES. Graph workloads participate in
+# the same lookup/resolution registry but have no C executable to invent.
+def _graph_family(family_id, name, modality, adapter, capabilities):
+    return FamilyDescriptor(
+        id=family_id, model_types=("colibri_runtime_" + family_id,),
+        display_name=name, display_scale="compact graph", engine_artifact="stream_runtime.py",
+        engine_aliases=(), engine_group="graph", internal_arch=family_id,
+        build_target="", process_names=(), default_model_id=family_id,
+        cli_adapter=adapter, gateway_adapter=adapter, planner_id="graph",
+        planner_geometry=None, planner_unsupported_reason="graph resource estimates come from colibri_runtime.json",
+        expert_inventory=lambda *args, **kwargs: (), config_section="root",
+        limits=FamilyLimits(1, 1, 128, 128, 1, 0, ""), capabilities=capabilities,
+        has_gateway_adapter=True, has_cli_adapter=True, modality=modality,
+        runtime_kind="graph", tokenizer_file="colibri_runtime.json")
+
+
+GRAPH_FAMILIES = (
+    _graph_family("text_graph", "Accelerated text", "text", "text_openvino",
+                  FamilyCapabilities(False, False, False, False)),
+    _graph_family("speech", "Streaming speech", "audio", "whisper_openvino",
+                  FamilyCapabilities(False, False, True, False)),
+    _graph_family("camera_upscale", "Camera upscaling", "camera", "super_resolution_openvino",
+                  FamilyCapabilities(False, False, False, False, image=True)),
+)
+
+
 def _build_registry(families):
     by_id = {}
     by_type = {}
@@ -1811,7 +1838,9 @@ def _build_registry(families):
                 not isinstance(family.has_cli_adapter, bool) or
                 not isinstance(family.tune_prompt_template, str) or
                 "{prompt}" not in family.tune_prompt_template or
-                family.modality not in ("text", "image", "decision") or
+                family.runtime_kind not in ("native", "graph") or
+                family.modality not in ("text", "image", "decision", "audio", "camera") or
+                (family.runtime_kind == "native" and family.modality in ("audio", "camera")) or
                 family.capabilities.decision != (family.modality == "decision") or
                 not isinstance(family.tokenizer_file, str) or not family.tokenizer_file or
                 not isinstance(family.checkpoint_files, tuple) or
@@ -1859,15 +1888,15 @@ def _normalize_model_type(model_type):
     return model_type.strip().lower()
 
 
-_BY_ID, _BY_TYPE = _build_registry(FAMILIES)
+_BY_ID, _BY_TYPE = _build_registry(FAMILIES + GRAPH_FAMILIES)
 
 
-def all_families():
-    return FAMILIES
+def all_families(include_graph=False):
+    return FAMILIES + GRAPH_FAMILIES if include_graph else FAMILIES
 
 
-def family_ids():
-    return tuple(family.id for family in FAMILIES)
+def family_ids(include_graph=False):
+    return tuple(family.id for family in all_families(include_graph))
 
 
 def family_by_id(family_id):
@@ -1982,6 +2011,19 @@ def _resolve_gliner2_checkpoint(model, config):
 
 def resolve_model(model_dir):
     model = Path(model_dir).expanduser().resolve()
+    if (model / "colibri_runtime.json").exists():
+        # This explicit deployment manifest wins over the original trained
+        # config.json. Registry lookup reads metadata; GraphEngine verifies
+        # every asset hash and the caller's budget before a backend loads.
+        from stream_runtime import read_manifest_metadata
+        try:
+            config = read_manifest_metadata(model)
+        except (ValueError, OSError, RuntimeError) as error:
+            raise FamilyConfigError(str(error)) from error
+        family = family_by_id(config["family"])
+        if family.runtime_kind != "graph":
+            raise FamilyConfigError("runtime manifest must name a graph family")
+        return ResolvedFamily(family, "colibri_runtime_" + family.id, config, config, str(model))
     path = model / "config.json"
     if not path.is_file() and (model / DECISION_CONFIG).is_file():
         return _resolve_decision_checkpoint(model)
@@ -2037,6 +2079,8 @@ def default_model_id(resolved):
     one of its own, else the family's."""
     family = resolved.descriptor
     config = resolved.family_config
+    if family.runtime_kind == "graph":
+        return config["model_id"]
     head = decision_head_of(resolved)
     if head:
         return head.model_id

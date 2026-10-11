@@ -26,6 +26,11 @@ Included now:
   refusal and profiling; physical Intel GPU, AIPU vendor-artifact and NVMe checks.
   See the [precision/hardware matrix](docs/precision-hardware.md) for exact limits.
 - Native OpenVINO CPU/GPU/NPU head execution with strict device-placement checks.
+- Production graph families wired into `coli` and the existing gateway: compact
+  text inference, English recognition/translation, and trained 4× image, video and
+  explicit camera upscaling. OpenVINO CPU/GPU/compatible NPU adapters; full-model
+  TPU/AIPU adapters still need implementation and hardware qualification.
+  See [runtime setup, tests and limits](docs/runtime-expansion.md).
 
 ```sh
 git clone https://github.com/johnnycoderbot-cloud/colibri-strata.git

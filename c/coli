@@ -432,6 +432,8 @@ def model_arch(model):
 
 def engine_for(model):
     family = resolve_model(model).descriptor
+    if family.runtime_kind == "graph":
+        return os.path.join(HERE, family.engine_artifact)
     if os.environ.get("COLI_ENGINE"):
         if (family.id != "glm" and
                 os.environ.get("COLI_DOCKER_GLM_ONLY") == "1"):
@@ -468,6 +470,8 @@ def need_model(model, engine=None):
     # and a missing model dir must say "model not found", not "unsupported model".
     # An image pipeline keeps its tokenizer in processor/, not at the root.
     require_model(model, file=None)
+    if resolve_model(model).descriptor.runtime_kind == "graph":
+        return
     tokenizer = "tokenizer.json"
     if is_image_model(model) or is_decision_model(model):
         # a decision checkpoint keeps it in tokenizer/ (Laya)
@@ -1290,6 +1294,9 @@ def cmd_build(a):
         sys.exit(f"{C.yel}coli build{C.r} only works from a source checkout (this is an installed copy).\n"
                   f"  Clone https://github.com/JustVugg/colibri and run ./setup.sh, or make -C c colibri.")
     family=resolve_model(a.model).descriptor if a.model else family_by_id("glm")
+    if family.runtime_kind == "graph":
+        print("Graph runtimes use optional Python packages; install requirements-runtime.txt and prepare a verified model pack.")
+        return
     target=family.build_target
     sys.exit(subprocess.call(["make","-C",HERE,target]))
 
@@ -1310,6 +1317,9 @@ def cmd_info(a):
     if family is not None and family.modality == "image":
         info_image_model(a, family, row)
         return
+    if family is not None and family.runtime_kind == "graph":
+        import runtime_cli
+        return runtime_cli.inspect_model(a)
     if family is not None and family.modality == "decision":
         info_decision_model(a, resolved, row)
         return
@@ -1505,6 +1515,9 @@ def cmd_plan(a):
     from resource_plan import build_plan, format_plan
     if not a.model:
         sys.exit(f"{C.yel}no model directory given.{C.r}\n  {NO_MODEL_HINT}")
+    if resolve_model(a.model).descriptor.runtime_kind == "graph":
+        import runtime_cli
+        return runtime_cli.inspect_model(a)
     if is_image_model(a.model):
         return plan_image_command(a)
     if is_decision_model(a.model):
@@ -1526,6 +1539,9 @@ def cmd_plan(a):
 
 def cmd_doctor(a):
     from doctor import exit_code, format_doctor, run_doctor
+    if a.model and os.path.isfile(os.path.join(a.model, "colibri_runtime.json")):
+        import runtime_cli
+        return runtime_cli.inspect_model(a, compile_model=True)
     if not a.model:
         report={"schema_version":1,"status":"error","model":None,
                 "mode":"deep" if a.deep else "standard",
@@ -1607,6 +1623,8 @@ def cmd_tune(a):
                  f"expert cache or decode loop to tune")
     if not family.has_gateway_adapter:
         sys.exit(f"{family.display_name}: gateway adapter is not wired")
+    if family.runtime_kind == "graph":
+        sys.exit("coli tune currently tunes native expert engines; use graph replay measurements and explicit --device")
     engine=engine_for(a.model)
     need_model(a.model,engine)
     base_env=(env_for_engine(a,arch,plan=plan) if arch!="glm" else env_for(a))
@@ -1663,6 +1681,9 @@ def cmd_tune(a):
 def cmd_run(a):
     need_model(a.model)
     family=resolve_model(a.model).descriptor
+    if family.runtime_kind == "graph":
+        import runtime_cli
+        return runtime_cli.run_text(a)
     arch=family.id
     engine=engine_for(a.model)
     need_model(a.model,engine)
@@ -2717,6 +2738,9 @@ def server_model_entry(base, api_key=None, timeout=1.5):
         return {}
 
 def cmd_chat(a):
+    if a.model and os.path.isfile(os.path.join(a.model, "colibri_runtime.json")):
+        import runtime_cli
+        return runtime_cli.run_text(a, interactive=True)
     # ATTACH: a running `coli serve` beats a private engine every time — the load
     # (34-136 s) and the cache warmth survive between sessions. Explicit --attach
     # wins; otherwise probe localhost quietly and use it if it's there. --no-attach
@@ -2995,6 +3019,8 @@ def serve_model_id(a):
 def cmd_serve(a):
     need_model(a.model)
     family=resolve_model(a.model).descriptor
+    if family.runtime_kind == "graph":
+        runtime_budget(a)
     arch=family.id
     if not family.has_gateway_adapter:
         sys.exit(f"{family.display_name}: gateway adapter is not wired")
@@ -3012,7 +3038,7 @@ def cmd_serve(a):
     model_id=serve_model_id(a)
     try:
         if a.temp is not None: os.environ["COLI_TEMP"] = str(a.temp)
-        env=_serve_engine_env(a,arch)
+        env=_serve_engine_env(a,arch) if family.runtime_kind == "native" else None
         if a.cluster_coordinator and not a.cluster_workers:
             from cluster import discover_workers
             try:
@@ -3027,7 +3053,8 @@ def cmd_serve(a):
               a.cap,ngen_for(a,interactive=True,family=family),engine,
               env,a.cors_origin,
               a.max_queue,a.queue_timeout,a.kv_slots,allowed_hosts=a.allowed_host,
-              family=family)
+              family=family, device=getattr(a, "device", "AUTO"),
+              memory_budget_bytes=runtime_budget(a) if family.runtime_kind == "graph" else 1 << 30)
     finally:
         try: os.unlink(serve_pidfile(a.port))
         except OSError: pass
@@ -3469,6 +3496,17 @@ def cmd_mirror(a):
     return subprocess.call(command)
 
 
+def runtime_budget(a):
+    import runtime_cli
+    return runtime_cli.budget(a)
+
+
+def cmd_runtime(a):
+    import runtime_cli
+    return {"transcribe": runtime_cli.transcribe, "upscale": runtime_cli.upscale,
+            "prepare-runtime": runtime_cli.prepare}[a.cmd](a)
+
+
 def main():
     common=argparse.ArgumentParser(add_help=False)
     common.add_argument("--model", default=DEF_MODEL); common.add_argument("--ram", type=int, default=0)  # 0 = auto (il motore usa l'88% della RAM disponibile)
@@ -3476,6 +3514,8 @@ def main():
     common.add_argument("--no-tune-profile",action="store_true",
                         help="ignore a saved measured tuning profile")
     common.add_argument("--ctx",type=int,default=0)
+    common.add_argument("--device", default="AUTO", help="graph runtime device: AUTO, CPU, GPU or NPU")
+    common.add_argument("--memory-budget-mib", type=int, default=1024, help="graph runtime memory admission budget in MiB")
     common.add_argument("--gpu",default=None,help="auto, none, or a device list such as 0,1")
     common.add_argument("--vram",type=float,default=0,help="total VRAM budget in GB (0=auto)")
     common.add_argument("--policy",choices=("quality","balanced","experimental-fast"),
@@ -3517,6 +3557,21 @@ def main():
     ap=argparse.ArgumentParser(prog="coli", parents=[common], description="colibri — run GLM-5.2 locally")
     ap.add_argument("--version", action="version", version=f"colibri {_version}")
     sub=ap.add_subparsers(dest="cmd")
+    prt = sub.add_parser("prepare-runtime", help="explicitly download a pinned speech/text/upscale model pack")
+    prt.add_argument("kind", choices=("speech", "camera_upscale", "text_graph"))
+    prt.add_argument("--output", required=True)
+    prs = sub.add_parser("transcribe", parents=[common], help="recognize or translate 16k mono WAV speech to English")
+    prs.add_argument("input", nargs="?")
+    prs.add_argument("--translate", action="store_true")
+    prs.add_argument("--auto-language", action="store_true")
+    prs.add_argument("--microphone", action="store_true", help="explicitly capture from the microphone")
+    prs.add_argument("--seconds", type=float, default=5)
+    pru = sub.add_parser("upscale", parents=[common], help="trained 4x image, video or explicit live camera upscaling")
+    pru.add_argument("input", nargs="?")
+    pru.add_argument("--output", required=True)
+    pru.add_argument("--video", action="store_true", help="process every video frame and remux audio")
+    pru.add_argument("--camera", type=int, default=None, help="explicitly open camera INDEX; output is a new frame directory")
+    pru.add_argument("--frames", type=int, default=60)
     sub.add_parser("build", parents=[common]); sub.add_parser("info", parents=[common])
     pp=sub.add_parser("plan",parents=[common])
     pp.add_argument("--json",action="store_true")
@@ -3674,6 +3729,7 @@ def main():
     pc.add_argument("--no-mtp",action="store_true",help="skip the MTP head (no speculative drafts)")
     a=ap.parse_args()
     handler={"build":cmd_build,"info":cmd_info,"plan":cmd_plan,"mirror":cmd_mirror,
+             "prepare-runtime":cmd_runtime,"transcribe":cmd_runtime,"upscale":cmd_runtime,
              "doctor":cmd_doctor,"tune":cmd_tune,
              "run":cmd_run,"chat":cmd_chat,"serve":cmd_serve,"stop":cmd_stop,"bench":cmd_bench,
              "convert":cmd_convert,"web":cmd_web}.get(a.cmd)
@@ -3693,6 +3749,8 @@ def main():
             sys.exit(handler(a) or 0)
         except (FamilyConfigError,UnknownFamilyError) as error:
             sys.exit(f"{C.yel}unsupported model:{C.r} {error}")
+        except (OSError, ValueError, RuntimeError, ImportError) as error:
+            sys.exit(f"{C.yel}command failed:{C.r} {error}")
     banner(); print(__doc__)
 
 if __name__=="__main__":
