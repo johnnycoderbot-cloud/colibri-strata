@@ -239,5 +239,23 @@
     "c/native_mojo_backend.c": "eeb478aba8bfbb7fa03862d7471892bd901468c1650505761f69c4de1fe814a7",
     "c/mojo_runtime_main.c": "4d2eb3d2d167c9627e0541a40a6f5e3cbc4c954b4e6e074a3ab6ba0bc2467629",
     "c/mojo_cli.py": "427eb2d4d2e9ede87edda793551f5d05f7fe37d5a14e8100567a6c971bc70138"
+  },
+  "ci": {
+    "status": "success",
+    "source_commit": "ad468a584dde06b281fb918c589e1d03b4e630d4",
+    "url": "https://github.com/johnnycoderbot-cloud/colibri-strata/actions/runs/38159354356",
+    "platform": "Linux GitHub CPU runner; not physical accelerator/bare-metal qualification",
+    "native_sdk_contract_checks": 65,
+    "exact_fixture_runs": 5,
+    "probe": {
+      "schema": "colibri.mojo-device-probe/v1",
+      "sdk_version": "26.6.0",
+      "cpu_available": true,
+      "accelerator_count": 0,
+      "enumeration_scope": "Modular runtime-visible devices",
+      "npu_tpu_aipu": "requires compatible driver/plugin; no universal discovery claim",
+      "native_windows": false
+    },
+    "report_sha256": "df299ab0956c2030729e350dbb3d219e1c476e9894afe9a5591c185a50cfcb91"
   }
 }

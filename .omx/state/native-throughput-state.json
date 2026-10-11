@@ -94,6 +94,8 @@
     "verification": "5 exact native fixture replays; 65 actual SDK checks under ASan/UBSan/leaks",
     "speed_claim": "functional backend only; full-model throughput comparison pending",
     "review": "approved independent native C ABI/ownership/device review",
-    "source_commit": "ad468a584dde06b281fb918c589e1d03b4e630d4"
+    "source_commit": "ad468a584dde06b281fb918c589e1d03b4e630d4",
+    "ci": "https://github.com/johnnycoderbot-cloud/colibri-strata/actions/runs/38159354356",
+    "ci_status": "success"
   }
 }

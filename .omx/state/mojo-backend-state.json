@@ -19,5 +19,23 @@
   "verification": "5 exact graph fixtures, 65 actual SDK contracts, ASan/UBSan/leaks and installed launcher checks",
   "source_commit": "ad468a584dde06b281fb918c589e1d03b4e630d4",
   "published_to": "origin/main",
-  "scope": "native MAX C compatible-graph backend; not automatic all-family/device acceleration"
+  "scope": "native MAX C compatible-graph backend; not automatic all-family/device acceleration",
+  "ci": {
+    "status": "success",
+    "source_commit": "ad468a584dde06b281fb918c589e1d03b4e630d4",
+    "url": "https://github.com/johnnycoderbot-cloud/colibri-strata/actions/runs/38159354356",
+    "platform": "Linux GitHub CPU runner; not physical accelerator/bare-metal qualification",
+    "native_sdk_contract_checks": 65,
+    "exact_fixture_runs": 5,
+    "probe": {
+      "schema": "colibri.mojo-device-probe/v1",
+      "sdk_version": "26.6.0",
+      "cpu_available": true,
+      "accelerator_count": 0,
+      "enumeration_scope": "Modular runtime-visible devices",
+      "npu_tpu_aipu": "requires compatible driver/plugin; no universal discovery claim",
+      "native_windows": false
+    },
+    "report_sha256": "df299ab0956c2030729e350dbb3d219e1c476e9894afe9a5591c185a50cfcb91"
+  }
 }
