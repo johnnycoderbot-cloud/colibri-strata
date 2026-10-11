@@ -58,7 +58,7 @@
     "speed_claim": "functional native conversion; no new throughput/power claim",
     "device_scope": "six CPU/GPU route replays; core SR placement verified, GenAI constructor selection only; NPU/TPU/AIPU physical full-model qualification pending"
   },
-  "handoff_reason": "Native Mojo backend slice finishing review/publication; original all-family/device and state/bandwidth workload wiring remain incomplete.",
+  "handoff_reason": "Native Mojo/MAX compatible-graph backend published and independently approved. Supported physical device/model qualification and original all-family/state/bandwidth workload integration remain incomplete.",
   "target_stack": {
     "declared_by_user": "Modular Mojo for SSD/CPU/GPU/NPU/AIPU software stack",
     "integration_boundary": "retain Colibri C core; native MAX C API or compiled Mojo C ABI",
@@ -86,13 +86,14 @@
     ]
   },
   "mojo_backend": {
-    "status": "ready_for_publication",
+    "status": "published",
     "language": "C17 client and MAX C SDK APIs; native Modular runtime/compiler",
     "qualification": ".omx/research/mojo-backend-qualification.json",
     "documentation": "docs/mojo-backend.md",
     "local_device_scope": "WSL CPU only, runtime accelerator_count 0",
     "verification": "5 exact native fixture replays; 65 actual SDK checks under ASan/UBSan/leaks",
     "speed_claim": "functional backend only; full-model throughput comparison pending",
-    "review": "approved independent native C ABI/ownership/device review"
+    "review": "approved independent native C ABI/ownership/device review",
+    "source_commit": "ad468a584dde06b281fb918c589e1d03b4e630d4"
   }
 }
