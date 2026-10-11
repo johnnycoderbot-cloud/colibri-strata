@@ -1,8 +1,8 @@
 {
   "phase": "freetoken-mechanisms",
-  "active": true,
-  "status": "ready_for_publication",
-  "complete": false,
+  "active": false,
+  "status": "published",
+  "complete": true,
   "runtime": "native-in-session",
   "owners": {
     "/root": "shared Vulkan execution wiring, integration and measured evidence",
@@ -11,7 +11,7 @@
     "/root/architecture": "independent execution/ownership review"
   },
   "scope": "full-cost concurrent expert partitions and join, native Mojo mapping/dispatch binding; preserve existing residency and prefill paths",
-  "next_gate": "publish reviewed native coordinator and scoped evidence",
+  "next_gate": "physical accelerator timing and further common-layer native adapter wiring",
   "review": "approved independent source/ABI/ownership review",
   "qualification": {
     "c_strict_cases": 31451,
@@ -51,5 +51,28 @@
     "single-device main-format unique one-row cold partitions; existing multi-device residency remains",
     "software Vulkan/WSL model evidence, not physical GPU/NPU/TPU/AIPU speed",
     "tensor-parallel collective and semantic-anchor ports remain separate"
-  ]
+  ],
+  "source_commit": "8e1fd34d23462435d07194f7b49e4449e17bfc69",
+  "ci": {
+    "source_commit": "8e1fd34d23462435d07194f7b49e4449e17bfc69",
+    "native_mojo": {
+      "status": "success",
+      "url": "https://github.com/johnnycoderbot-cloud/colibri-strata/actions/runs/38173352565",
+      "scope": "pinned SDK native graph fixtures, real compiled Mojo coordinator, native Vulkan split/reference/join and full ASan/UBSan/leak regression"
+    },
+    "graph_runtime": {
+      "status": "success",
+      "url": "https://github.com/johnnycoderbot-cloud/colibri-strata/actions/runs/38173352542"
+    },
+    "strata": {
+      "status": "success",
+      "url": "https://github.com/johnnycoderbot-cloud/colibri-strata/actions/runs/38173352552"
+    },
+    "platform_gate": {
+      "status": "rerun_pending_after_Darwin_test_declaration_repair",
+      "repair_commit": "89b29873f0fdb656e2af7f608925eb8b158c143d",
+      "scope": "full Windows/Linux/macOS repository checks; not part of physical accelerator qualification"
+    }
+  },
+  "completion_scope": "reviewed native C/Mojo coordinator and shared Vulkan cold expert execution slice; full all-backend/device runtime goal remains incomplete"
 }

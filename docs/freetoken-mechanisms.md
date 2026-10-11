@@ -77,6 +77,8 @@ The complete native Mojo/Vulkan gate also passes ASan, UBSan and leak checking.
 That final check exposed and fixed missing Vulkan normalization pipeline,
 shader and descriptor-pool releases at shutdown. CI runs the same full gate
 with leak detection enabled.
+The implementation commit's [native Mojo CI](https://github.com/johnnycoderbot-cloud/colibri-strata/actions/runs/38173352565)
+passed the pinned SDK build, real Mojo/C comparison and complete Vulkan gate.
 
 ~~~sh
 make -C c runtime-split-check

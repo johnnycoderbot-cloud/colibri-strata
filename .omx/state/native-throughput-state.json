@@ -58,7 +58,7 @@
     "speed_claim": "functional native conversion; no new throughput/power claim",
     "device_scope": "six CPU/GPU route replays; core SR placement verified, GenAI constructor selection only; NPU/TPU/AIPU physical full-model qualification pending"
   },
-  "handoff_reason": "Native Mojo/MAX compatible-graph backend published and independently approved. Supported physical device/model qualification and original all-family/state/bandwidth workload integration remain incomplete.",
+  "handoff_reason": "Shared Vulkan native Mojo split slice published, reviewed and qualified under native execution/leak CI. Whole-request software Vulkan comparison has no repeatable gain; broader all-family/device/state/bandwidth integration remains incomplete.",
   "target_stack": {
     "declared_by_user": "Modular Mojo for SSD/CPU/GPU/NPU/AIPU software stack",
     "integration_boundary": "retain Colibri C core; native MAX C API or compiled Mojo C ABI",
@@ -70,7 +70,7 @@
   },
   "adaptability": {
     "policy": "c/runtime_map.h/.c",
-    "status": "portable policy verified; runtime wiring incomplete",
+    "status": "native Mojo/C split wired to shared Vulkan expert tier; other adapter and state/SSD wiring incomplete",
     "principles": [
       "state ownership and numerical compatibility",
       "measured full transfer/queue/compute cost",
@@ -96,7 +96,14 @@
       ],
       "implementation_status": "Native C full-cost split and actual compiled Mojo coordinator now wired to shared Vulkan cold decode, retained fills, batch-recency LRU and grouped OLMoE CPU prefill.",
       "benchmark_status": "Nine real OLMoE pairs on software Vulkan: ratio0.99328, exact outputs and observed LP; no repeatable speed gain; opt-in.",
-      "qualification": ".omx/research/freetoken-port-qualification.json"
+      "qualification": ".omx/research/freetoken-port-qualification.json",
+      "implementation_source_commit": "8e1fd34d23462435d07194f7b49e4449e17bfc69",
+      "native_ci": {
+        "status": "success",
+        "url": "https://github.com/johnnycoderbot-cloud/colibri-strata/actions/runs/38173352565",
+        "scope": "pinned SDK native graph fixtures, real compiled Mojo coordinator, native Vulkan split/reference/join and full ASan/UBSan/leak regression"
+      },
+      "slice_status": "published"
     }
   },
   "mojo_backend": {

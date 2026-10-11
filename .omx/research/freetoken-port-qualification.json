@@ -54,5 +54,29 @@
   },
   "vulkan_log_sha256": "06e406f04295edfdd53e37437c1532c540dd5406a2027abfabd884578e52e487",
   "model_staging": "37 original/staged files matched independently; originals preserved; temporary WSL-native assets",
-  "vulkan_asan_log_sha256": "9b2336cca702d69588c15b2d7a4f174f5dc12eeb1e3c543408d96d30b62b8eaa"
+  "vulkan_asan_log_sha256": "9b2336cca702d69588c15b2d7a4f174f5dc12eeb1e3c543408d96d30b62b8eaa",
+  "publication": {
+    "source_commit": "8e1fd34d23462435d07194f7b49e4449e17bfc69",
+    "ci": {
+      "source_commit": "8e1fd34d23462435d07194f7b49e4449e17bfc69",
+      "native_mojo": {
+        "status": "success",
+        "url": "https://github.com/johnnycoderbot-cloud/colibri-strata/actions/runs/38173352565",
+        "scope": "pinned SDK native graph fixtures, real compiled Mojo coordinator, native Vulkan split/reference/join and full ASan/UBSan/leak regression"
+      },
+      "graph_runtime": {
+        "status": "success",
+        "url": "https://github.com/johnnycoderbot-cloud/colibri-strata/actions/runs/38173352542"
+      },
+      "strata": {
+        "status": "success",
+        "url": "https://github.com/johnnycoderbot-cloud/colibri-strata/actions/runs/38173352552"
+      },
+      "platform_gate": {
+        "status": "rerun_pending_after_Darwin_test_declaration_repair",
+        "repair_commit": "89b29873f0fdb656e2af7f608925eb8b158c143d",
+        "scope": "full Windows/Linux/macOS repository checks; not part of physical accelerator qualification"
+      }
+    }
+  }
 }
