@@ -94,3 +94,7 @@
   Native gateway425, registry59, HTTP framing8 and package closure passed. Optional
   PNG/video tests skip cleanly in the dependency-free native gate; full optional
   graph CI runs them. Public replay evidence excludes private SDK paths/capture.
+- Combined final suite passed64 tests with one Windows POSIX FIFO skip (Linux case
+  separately passed). Published functional commit6855039471a3fbbf2c4ad9f5e397d152bb29a04c.
+  Graph CI38107182186 and portable-core CI38107182267 dispatched; online status
+  pending at publication. No full-model TPU/AIPU qualification claim.
