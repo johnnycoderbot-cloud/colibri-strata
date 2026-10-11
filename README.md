@@ -23,8 +23,9 @@ Included now:
 - Offline training and C weight export from checkpoint-identified hidden traces.
   Trained heads are specific to a checkpoint, tokenizer, quantization and hidden tap.
 - Optional ONNX GPU/NPU and JAX GPU/TPU standalone head runners with explicit device
-  refusal and profiling; physical Intel GPU, Metis vendor-artifact and NVMe checks.
+  refusal and profiling; physical Intel GPU, AIPU vendor-artifact and NVMe checks.
   See the [precision/hardware matrix](docs/precision-hardware.md) for exact limits.
+- Native OpenVINO CPU/GPU/NPU head execution with strict device-placement checks.
 
 ```sh
 git clone https://github.com/johnnycoderbot-cloud/colibri-strata.git
@@ -39,6 +40,7 @@ make -C c strata-fuzz           # bounded malformed-data and failure campaign
 [Training and head contract](experimental/strata/README.md) ·
 [Benchmark protocol](docs/strata-benchmarks.md) ·
 [Integration roadmap](docs/strata-roadmap.md)
+· [Streaming runtime expansion](docs/runtime-expansion.md)
 
 Colibri's Apache-2.0 license and upstream history are retained. The implementation
 below is original; no Strata source or weights were copied. Strata is credited for

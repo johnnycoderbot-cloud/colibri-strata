@@ -10,10 +10,12 @@
   ],
   "portable_precision": "tested",
   "physical_GPU_NVMe": "tested",
-  "physical_Metis_vendor_artifact": "tested",
+  "native_OpenVINO_CPU_GPU": "tested",
+  "native_OpenVINO_NPU": "adapter tested; physical NPU unavailable",
+  "physical_AIPU_vendor_artifact": "tested",
   "physical_TPU": "unavailable",
-  "Metis_head_compilation": "pending",
+  "AIPU_head_compilation": "pending",
   "native_accelerator_INT4_INT16": "unverified",
   "full_upstream_C_regression": "passed after CRLF SSD fixture test correction",
-  "github_CI": "pending publication"
+  "github_CI": "initial precision commit passed; final naming/OpenVINO/build-contract update pending"
 }

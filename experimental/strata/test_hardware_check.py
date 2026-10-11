@@ -11,7 +11,7 @@ class HardwareCliTests(unittest.TestCase):
     def test_missing_pack_cannot_report_accelerator_success(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            for flag, value in (("--jax-platform", "tpu"), ("--provider", "MissingNPUExecutionProvider")):
+            for flag, value in (("--jax-platform", "tpu"), ("--provider", "MissingNPUExecutionProvider"), ("--openvino-device", "NPU")):
                 report = root / "report.json"
                 result = subprocess.run([sys.executable, str(heads.ROOT / "experimental/strata/hardware_check.py"),
                                          flag, value, "--out", str(report)], capture_output=True,

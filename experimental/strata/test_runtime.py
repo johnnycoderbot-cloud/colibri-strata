@@ -232,5 +232,138 @@ class JaxTests(unittest.TestCase):
             runtime.run_jax(pack(), [1., 2., 3.], platform="npu")
 
 
+class OpenVinoRefusalTests(unittest.TestCase):
+    def test_absent_npu_is_refused_before_model_export(self):
+        core = SimpleNamespace(available_devices=["CPU", "GPU.0"])
+        fake = SimpleNamespace(Core=lambda: core)
+        with mock.patch.object(runtime, "_dependency", return_value=fake), mock.patch.object(runtime, "export_onnx") as export:
+            with self.assertRaisesRegex(RuntimeError, "NPU.*unavailable"):
+                runtime.run_openvino(pack(), [1., 2., 3.])
+        export.assert_not_called()
+
+    def test_virtual_and_malformed_device_selection_is_refused(self):
+        for device in ("AUTO", "AUTO:NPU,CPU", "HETERO:NPU,CPU", "MULTI:NPU,CPU", "", "cpu", "NPU:CPU", "GPU.foo", "CPU.0"):
+            with self.subTest(device=device), self.assertRaises(ValueError):
+                runtime.run_openvino(pack(), [1., 2., 3.], device=device)
+
+
+@unittest.skipUnless(available("numpy"), "optional numpy unavailable")
+class OpenVinoContractTests(unittest.TestCase):
+    @staticmethod
+    def fake_openvino(available_devices, executed_devices, hint="f16", output=None):
+        import numpy as np
+        captured = {}
+
+        class Request:
+            def infer(self, inputs):
+                captured["inputs"] = inputs
+                captured["inferred"] = True
+                return {"named_logits_port": np.zeros((2, 5), dtype=np.float32) if output is None else output}
+
+        class Compiled:
+            def get_property(self, name):
+                if name == "EXECUTION_DEVICES":
+                    return executed_devices() if callable(executed_devices) else executed_devices
+                if name == "INFERENCE_PRECISION_HINT" and hint is not None:
+                    return hint
+                raise RuntimeError("unsupported property")
+
+            def create_infer_request(self):
+                return Request()
+
+            def output(self, name):
+                captured["output_name"] = name
+                return "named_logits_port"
+
+        class Core:
+            def __init__(self):
+                self.available_devices = available_devices
+
+            def read_model(self, model):
+                captured["model_bytes"] = model
+                return "static_model"
+
+            def compile_model(self, model, device_name, config):
+                captured.update(model=model, requested_device=device_name, config=config)
+                return Compiled()
+
+        return SimpleNamespace(Core=Core, Type=SimpleNamespace(f32="f32")), captured
+
+    def run_fake(self, fake, **kwargs):
+        real_dependency = runtime._dependency
+        with mock.patch.object(runtime, "_dependency", side_effect=lambda name: fake if name == "openvino" else real_dependency(name)), \
+                mock.patch.object(runtime, "export_onnx", return_value=b"static-onnx"):
+            return runtime.run_openvino(pack(), kwargs.pop("hidden", [1., 2., 3.]), **kwargs)
+
+    def test_available_npu_uses_only_requested_device_and_reports_precision_honestly(self):
+        fake, captured = self.fake_openvino(["CPU", "NPU"], ["NPU"])
+        result = self.run_fake(fake, device="NPU", bits=8)
+        self.assertEqual(captured["requested_device"], "NPU")
+        self.assertEqual(captured["config"], {})
+        self.assertEqual(captured["model_bytes"], b"static-onnx")
+        self.assertEqual(captured["output_name"], "logits")
+        self.assertEqual(result["executed_devices"], ["NPU"])
+        self.assertEqual(result["graph_precision"], "f32")
+        self.assertEqual(result["runtime_precision_hint"], "f16")
+        self.assertEqual(result["runtime_precision"], "unknown")
+        self.assertEqual(result["compute_precision"], "unknown")
+        self.assertEqual(result["storage_precision"], "int8")
+        self.assertEqual(captured["inputs"]["hidden"].shape, (1, 3))
+
+    def test_default_aliases_and_exact_explicit_ordinals(self):
+        for requested, available_devices, executed in (("GPU", ["GPU.0"], ["GPU.0"]),
+                                                        ("NPU", ["NPU.0"], ["NPU.0"]),
+                                                        ("GPU.1", ["GPU.0", "GPU.1"], ["GPU.1"])):
+            fake, captured = self.fake_openvino(available_devices, executed, hint=None)
+            result = self.run_fake(fake, device=requested)
+            self.assertEqual(result["executed_devices"], executed)
+            self.assertEqual(result["runtime_precision_hint"], "unknown")
+            if requested.startswith("GPU"):
+                self.assertEqual(captured["config"], {"INFERENCE_PRECISION_HINT": "f32"})
+        for requested, available_devices, executed in (("GPU", ["GPU.0"], ["CPU"]),
+                                                        ("NPU", ["NPU"], ["GPU.0"]),
+                                                        ("GPU.1", ["GPU.0", "GPU.1"], ["GPU.0"]),
+                                                        ("NPU", ["NPU"], ["NPU", "CPU"])):
+            fake, captured = self.fake_openvino(available_devices, executed)
+            with self.subTest(requested=requested, executed=executed), self.assertRaisesRegex(RuntimeError, "substituted"):
+                self.run_fake(fake, device=requested)
+            self.assertNotIn("inferred", captured)
+
+    def test_post_inference_substitution_and_malformed_outputs(self):
+        import numpy as np
+        calls = iter((["NPU"], ["CPU"]))
+        fake, captured = self.fake_openvino(["NPU"], lambda: next(calls))
+        with self.assertRaisesRegex(RuntimeError, "substituted"):
+            self.run_fake(fake)
+        self.assertTrue(captured["inferred"])
+        for output in (np.full((2, 5), np.nan, dtype=np.float32), np.zeros((1, 5), dtype=np.float32)):
+            fake, _ = self.fake_openvino(["NPU"], ["NPU"], output=output)
+            with self.assertRaises(ValueError):
+                self.run_fake(fake)
+
+    def test_bad_hidden_and_identity_before_compilation(self):
+        fake, captured = self.fake_openvino(["NPU"], ["NPU"])
+        for hidden in ([1.], [float("nan"), 2., 3.], [float("inf"), 2., 3.]):
+            with self.assertRaises(ValueError):
+                self.run_fake(fake, hidden=hidden)
+        with self.assertRaises(ValueError):
+            self.run_fake(fake, expected_identity=pack()["identity"] | {"hidden_tap": "different"})
+        self.assertNotIn("requested_device", captured)
+
+
+@unittest.skipUnless(available("numpy", "onnx", "openvino"), "optional numpy/onnx/openvino unavailable")
+class OpenVinoCpuTests(unittest.TestCase):
+    def test_real_cpu_parity_all_storage_precisions(self):
+        import numpy as np
+        p, hidden = pack(), [1., 2., 3.]
+        for bits in (4, 8, 16):
+            result = runtime.run_openvino(p, hidden, device="CPU", bits=bits, block_values=5)
+            np.testing.assert_allclose(result["logits"], precision.reference(p, hidden, bits, 5), rtol=2e-5, atol=2e-5)
+            self.assertEqual(result["tokens"], [3, 4])
+            self.assertEqual(result["executed_devices"], ["CPU"])
+            self.assertEqual(result["graph_precision"], "f32")
+            self.assertEqual(result["runtime_precision"], "unknown")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

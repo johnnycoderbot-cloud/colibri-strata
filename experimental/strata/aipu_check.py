@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run an existing, compiled Metis artifact using an explicit installed SDK.
+"""Run an existing, compiled AIPU artifact using an explicit installed SDK.
 
 This verifies the supplied vendor artifact, not arbitrary Colibri model support.
 No compilation, driver installation, reset, firmware flash or power changes.
@@ -12,18 +12,22 @@ import re
 from pathlib import Path
 import subprocess
 
-ENTRY = 'import sys; sys.argv=["axrunmodel",*sys.argv[1:]]; from axelera.runtime.run import entrypoint_main; sys.exit(entrypoint_main())'
+ENTRY = 'import sys,importlib; module,function=sys.argv.pop(1).split(":"); sys.argv[0]="aipu-run"; sys.exit(getattr(importlib.import_module(module),function)())'
 
 
-def invoke(sdk_python, runtime_bin, device_dir, arguments, timeout=30):
+def invoke(sdk_python, runtime_bin, device_dir, arguments, timeout=30, *, sdk_entry, device_env):
+    if not isinstance(sdk_entry, str) or not re.fullmatch(r"[a-zA-Z_][a-zA-Z0-9_.]*:[a-zA-Z_][a-zA-Z0-9_]*", sdk_entry):
+        raise ValueError("SDK entry must be module:function")
+    if not isinstance(device_env, str) or not re.fullmatch(r"[A-Z][A-Z0-9_]*DEVICE_DIR", device_env):
+        raise ValueError("device environment key must name an SDK DEVICE_DIR")
     for value in (sdk_python, runtime_bin, device_dir):
         if not Path(value).is_absolute() or not Path(value).exists():
             raise ValueError("explicit existing SDK paths are required")
     env = os.environ.copy()
     env["PATH"] = str(runtime_bin) + os.pathsep + str(Path(runtime_bin).parent / "lib") + os.pathsep + env.get("PATH", "")
-    env["AXELERA_DEVICE_DIR"] = str(device_dir)
+    env[device_env] = str(device_dir)
     env["PYTHONIOENCODING"] = "utf-8"
-    return subprocess.run([str(sdk_python), "-X", "utf8", "-c", ENTRY, *arguments],
+    return subprocess.run([str(sdk_python), "-X", "utf8", "-c", ENTRY, sdk_entry, *arguments],
                           capture_output=True, text=True, encoding="utf-8", timeout=timeout, env=env)
 
 
@@ -47,13 +51,15 @@ def main():
     parser.add_argument("--sdk-python", type=Path, required=True)
     parser.add_argument("--runtime-bin", type=Path, required=True)
     parser.add_argument("--device-dir", type=Path, required=True)
+    parser.add_argument("--sdk-entry", required=True, help="installed SDK module:function entry point")
+    parser.add_argument("--device-env", required=True, help="SDK environment variable ending in DEVICE_DIR")
     parser.add_argument("--model", type=Path)
     parser.add_argument("--out", type=Path)
     parser.add_argument("--help-sdk", action="store_true")
     parser.add_argument("--seconds", type=int, default=2)
     args = parser.parse_args()
     if args.help_sdk:
-        result = invoke(args.sdk_python, args.runtime_bin, args.device_dir, ["--help"])
+        result = invoke(args.sdk_python, args.runtime_bin, args.device_dir, ["--help"], sdk_entry=args.sdk_entry, device_env=args.device_env)
         print(result.stdout)
         print(result.stderr)
         raise SystemExit(result.returncode)
@@ -62,9 +68,10 @@ def main():
     if not 1 <= args.seconds <= 10:
         parser.error("seconds must be 1..10")
     result = invoke(args.sdk_python, args.runtime_bin, args.device_dir,
-                    [str(args.model.resolve()), "--seconds", str(args.seconds), "--verify", "every", "--stats"], timeout=60)
+                    [str(args.model.resolve()), "--seconds", str(args.seconds), "--verify", "every", "--stats"], timeout=60,
+                    sdk_entry=args.sdk_entry, device_env=args.device_env)
     passed, checked, total = verification_counts(result.stdout, result.returncode)
-    report = {"schema": "colibri.strata.axelera-compiled-probe/v1", "passed": bool(passed),
+    report = {"schema": "colibri.strata.aipu-compiled-probe/v1", "passed": bool(passed),
               "return_code": result.returncode, "checked_frames": checked, "total_frames": total,
               "model_descriptor_sha256": hashlib.sha256(args.model.read_bytes()).hexdigest(),
               "model": args.model.parent.parent.name, "scope": "existing vendor-compiled artifact",

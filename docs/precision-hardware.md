@@ -13,9 +13,11 @@ Colibri engine adapters from the original roadmap are still pending.
 | Parallel quantized heads, CPU | Tested | Tested | Tested | Scalar/OpenMP, mixed precisions, transactional errors; dequantized F32 activations with double reference accumulation |
 | ONNX head graph, CPU | Tested | Tested | Tested | Static graph, exact target identity, finite/shape checks and actual provider node profiles |
 | Intel UHD Graphics 770, DirectML | Tested | Tested | Tested | Real physical GPU; integer weights decoded to F32 graph; exclusive DirectML compute profiles and reference parity |
+| OpenVINO native CPU/GPU | Tested | Tested | Tested | Explicit device, execution-device checks before/after inference; actual local GPU and CPU reference parity |
 | CUDA/TensorRT, other GPU providers | Adapter | Adapter | Adapter | Explicit ONNX provider route; absent provider/refused operations fail rather than silently substituting CPU; not physically tested here |
 | Intel/Qualcomm/other NPU providers | Adapter | Adapter | Adapter | Explicit OpenVINO/QNN/etc provider options; provider availability alone does not certify a physical NPU or native integer arithmetic |
-| Axelera Metis M.2 110m, SDK 1.8.0 | Head compilation pending | Native vendor artifact tested | Head compilation pending | 1,346/1,346 ResNet50 golden frames on actual Metis, not a Colibri head-bank test |
+| OpenVINO native NPU | Adapter | Adapter | Adapter | Explicit NPU selection and EXECUTION_DEVICES checks; no AUTO/HETERO/MULTI substitution; local NPU absent, refusal tested |
+| AIPU (local hardware), SDK 1.8.0 | Head compilation pending | Native vendor artifact tested | Head compilation pending | 1,346/1,346 ResNet50 golden frames on actual AIPU, not a Colibri head-bank test |
 | Google TPU via JAX | Adapter | Adapter | Adapter | Explicit device placement and completion checks; CPU smoke and absent-TPU refusal tested; no physical TPU available |
 | Coral Edge TPU | Pending | Pending | Pending | Requires a separate static fully quantized eight-bit TFLite/compiler adapter |
 | Lexar NQ7A1 NVMe, C: filesystem | Tested | Tested | Tested | 64 MiB random regular-file reads checked against SHA256 and request identity; all three stored CSQ1 formats decoded; buffered I/O |
@@ -63,13 +65,15 @@ Optional standalone GPU/NPU runner:
 ```python
 import json, sys
 sys.path.insert(0, "experimental/strata")
-from runtime import export_onnx, run_onnx, run_jax
+from runtime import export_onnx, run_onnx, run_openvino, run_jax
 pack = json.load(open("target-heads.json"))
 model_bytes = export_onnx(pack, bits=4)  # opset17, IR8, static input [1,H]
 result = run_onnx(pack, hidden, provider="DmlExecutionProvider", bits=4)
 # Device options are vendor-specific; an unavailable NPU is an error.
 result = run_onnx(pack, hidden, provider="OpenVINOExecutionProvider",
                   provider_options={"device_type":"NPU"}, bits=8)
+# Native OpenVINO route: verifies exact execution devices before/after inference.
+result = run_openvino(pack, hidden, device="NPU", bits=8)
 # A TPU request never silently uses CPU.
 result = run_jax(pack, hidden, platform="tpu", bits=8)
 ```
@@ -79,19 +83,24 @@ The documented local GPU test used onnxruntime-directml 1.24.4. ORT CPU 1.26.0,
 ONNX 1.18.0, JAX CPU 0.6.1 and Torch 2.10.0+cpu were exercised. Each accelerator
 request disables CPU fallback and checks node profiles; wrong provider proof is
 an error. An NPU provider's own device routing also needs vendor-specific evidence.
+Native OpenVINO 2026.4.1 was also tested on the local CPU/GPU. It detected no local
+NPU. Its graph input is F32; a precision hint is not proof of every device kernel's
+arithmetic, so runtime precision remains unknown unless independently evidenced.
 
 `hardware_check.py --pack ... --provider ... --out report.json` checks standalone
 heads plus bounded regular-file integrity. It creates and removes its own 8 MiB
 fixture; it never writes a raw disk. This is buffered filesystem I/O, not O_DIRECT,
 GPUDirect Storage, a durability certification, or a storage-throughput benchmark.
 
-`axelera_check.py` accepts explicit existing SDK Python/runtime/device paths and
+`aipu_check.py` accepts explicit existing SDK Python/runtime/device paths and
 a precompiled model.json. It invokes the SDK with UTF-8 and a bounded timeout,
 checks every golden frame, and propagates the actual SDK exit status. It does not
 install/reset the device, flash firmware, or change power settings. On Windows,
-Metis inference is native; model compilation runs on Linux/WSL. A head-bank ONNX
+AIPU inference is native; model compilation runs on Linux/WSL. A head-bank ONNX
 artifact still needs appropriate calibration, vendor compilation, placement
-inspection and real head-output validation before use on Metis.
+inspection and real head-output validation before use on AIPU.
+The adapter receives its installed SDK `module:function` entry and device-directory
+environment key explicitly. Public interfaces use the generic NPU/TPU/AIPU labels.
 
 ## Adversarial findings and verification
 
@@ -113,14 +122,18 @@ inspection and real head-output validation before use on Metis.
 - The full upstream portable C suite exposed a CRLF checkout bug in the SSD fixture
   reader. The test now strips record line endings while preserving escaped payload
   control bytes. The complete suite passes after that correction.
+- Broader inherited Python CI caught redundant handwritten header prerequisites
+  in the added Makefile targets. They now use Colibri's compiler-generated .d
+  dependencies; focused CI also checks that existing build contract.
 
 The failure tests are evidence for these paths, not a claim of zero bugs. Production
 engine adapters, real-model acceptance/quality, hardware DMA integration and native
 integer kernels remain distinct gates.
 
 Primary references: [DirectML provider](https://onnxruntime.ai/docs/execution-providers/DirectML-ExecutionProvider.html),
-[Axelera compiler](https://docs.axelera.ai/sdk/reference/compiler/compiler-api/),
-[Axelera ONNX constraints](https://docs.axelera.ai/sdk/reference/compiler/onnx-support/),
-[Windows Metis](https://docs.axelera.ai/sdk/user-guides/windows-setup/),
+[OpenVINO NPU](https://docs.openvino.ai/2026/openvino-workflow/running-inference/inference-devices-and-modes/npu-device.html),
+[AIPU compiler](https://docs.axelera.ai/sdk/reference/compiler/compiler-api/),
+[AIPU ONNX constraints](https://docs.axelera.ai/sdk/reference/compiler/onnx-support/),
+[Windows AIPU](https://docs.axelera.ai/sdk/user-guides/windows-setup/),
 [JAX TPU](https://docs.cloud.google.com/tpu/docs/run-calculation-jax),
 [Coral requirements](https://www.coral.withgoogle.com/docs/edgetpu/models-intro/).

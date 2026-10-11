@@ -1,7 +1,7 @@
 # Precision and hardware hardening
 
 User request: signed INT4/INT8/INT16 readiness; adversarial bug/failure tests;
-GPU, NPU, AIPU and NVMe capability. Clarification: user has Axelera and wants
+GPU, NPU, AIPU and NVMe capability. Clarification: user has AIPU and wants
 standard NPU/GPU/TPU coverage.
 
 Interpretation: INT16 means signed integer storage, distinct from FP16/BF16.
@@ -24,7 +24,7 @@ Slices / owners (native in-session, not detached OMX team):
 Verify: strict GCC serial/OpenMP, ASan/UBSan, seeded structured mutation campaign,
 INT4/8/16 C/Python export parity, provider error/fallback tests, real file I/O
 integrity/short-read tests. Run existing upstream quant/backend/store tests as
-relevant; GPU/NPU physical execution must be explicitly identified. Axelera needs
+relevant; GPU/NPU physical execution must be explicitly identified. AIPU needs
 qualified compiler output and actual SDK/runtime; no automatic driver/firmware changes.
 
 Exit: portable precision tests and failure cases pass; hardware/export capability

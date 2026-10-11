@@ -37,6 +37,9 @@ jobs:
         run: make -C c strata-check
       - name: Scalar fallback
         run: make -C c strata-check-scalar
+      - name: Upstream generated-dependency regression
+        working-directory: c
+        run: python -m unittest discover -s tests -p test_makefile_deps.py -v
       - name: ASan and UBSan
         run: make -C c strata-sanitize
       - name: Seeded adversarial campaign

@@ -69,11 +69,12 @@ def main():
     parser.add_argument("--provider", default="CPUExecutionProvider")
     parser.add_argument("--provider-options", default="{}")
     parser.add_argument("--jax-platform")
+    parser.add_argument("--openvino-device", help="explicit CPU/GPU/NPU device; AUTO is not a hardware proof")
     parser.add_argument("--storage-dir", type=Path, default=heads.ROOT)
     parser.add_argument("--reads", type=int, default=64)
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
-    if not args.pack and (args.jax_platform or args.provider != "CPUExecutionProvider" or args.provider_options != "{}"):
+    if not args.pack and (args.jax_platform or args.openvino_device or args.provider != "CPUExecutionProvider" or args.provider_options != "{}"):
         parser.error("accelerator/provider options require --pack; a storage-only check cannot certify them")
     if args.out.exists():
         parser.error("report output must be a new file")
@@ -98,6 +99,13 @@ def main():
                 raise ValueError("accelerator token parity failed")
             result["passed"] = True
             runs.append(result)
+            if args.openvino_device:
+                ov_result = runtime.run_openvino(pack, hidden, device=args.openvino_device, bits=bits, block_values=3)
+                np.testing.assert_allclose(np.asarray(ov_result["logits"]), expected, rtol=2e-5, atol=2e-5)
+                if ov_result["tokens"] != expected.argmax(axis=1).tolist():
+                    raise ValueError("OpenVINO token parity failed")
+                ov_result["passed"] = True
+                report.setdefault("openvino", []).append(ov_result)
         report["onnx"] = runs
         if args.jax_platform:
             report["jax"] = runtime.run_jax(pack, hidden, platform=args.jax_platform)

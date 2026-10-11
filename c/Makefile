@@ -3021,19 +3021,19 @@ STRATA_FUZZ_CASES ?= 100000
 STRATA_FUZZ_SEED ?= 20261010
 STRATA_CLANG ?= clang
 
-tests/test_strata_heads$(EXE): tests/test_strata_heads.c strata_heads.h
+tests/test_strata_heads$(EXE): tests/test_strata_heads.c
 	$(CC) $(CFLAGS) $< -o $@ $(LDFLAGS)
 
-tests/test_strata_memory$(EXE): tests/test_strata_memory.c strata_memory.h
+tests/test_strata_memory$(EXE): tests/test_strata_memory.c
 	$(CC) $(CFLAGS) $< -o $@ $(LDFLAGS)
 
-tests/bench_strata_heads$(EXE): tests/bench_strata_heads.c strata_heads.h
+tests/bench_strata_heads$(EXE): tests/bench_strata_heads.c
 	$(CC) $(CFLAGS) $< -o $@ $(LDFLAGS)
 
-tests/test_strata_quant$(EXE): tests/test_strata_quant.c strata_quant.h strata_memory.h
+tests/test_strata_quant$(EXE): tests/test_strata_quant.c
 	$(CC) $(CFLAGS) $< -o $@ $(LDFLAGS)
 
-tests/test_strata_quant_heads$(EXE): tests/test_strata_quant_heads.c strata_quant_heads.h strata_quant.h strata_heads.h
+tests/test_strata_quant_heads$(EXE): tests/test_strata_quant_heads.c
 	$(CC) $(CFLAGS) $< -o $@ $(LDFLAGS)
 
 strata-check: tests/test_strata_heads$(EXE) tests/test_strata_memory$(EXE) tests/test_strata_quant$(EXE) tests/test_strata_quant_heads$(EXE) tests/test_spec_draft$(EXE)
@@ -3085,7 +3085,7 @@ strata-training-check:
 	$(PYTHON) ../experimental/strata/precision_smoke.py --cc "$(CC)"
 
 strata-runtime-check:
-	$(PYTHON) -c "import numpy, onnx, onnxruntime, jax; print(onnxruntime.get_available_providers())"
+	$(PYTHON) -c "import numpy, onnx, onnxruntime, jax, openvino; print(onnxruntime.get_available_providers()); print(openvino.Core().available_devices)"
 	$(PYTHON) -m unittest discover -s ../experimental/strata -p test_runtime.py -v
 
 AUTODEP_ELSEWHERE = test_segment_adapters_registration test_segment_adapters_real \

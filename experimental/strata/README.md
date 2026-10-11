@@ -63,5 +63,5 @@ experimental interfaces; `coli chat` has no new feature switch for them.
 The C exporter now supports `--weight-bits 4`, `8` or `16`. These are signed integer
 storage formats, with FP32 activation/reference computation. See
 [precision and hardware validation](../../docs/precision-hardware.md) for optional
-ONNX providers, explicit JAX TPU placement, Axelera compiled-artifact verification,
+ONNX providers, explicit JAX TPU placement, AIPU compiled-artifact verification,
 NVMe file-tier tests and the distinction between physical and simulated evidence.

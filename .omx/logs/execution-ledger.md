@@ -29,18 +29,30 @@
   prefetch/chunked prefill, hot residency and model-native INT8 KV quality.
   These production tasks remain pending; no new live inference speedup claimed.
 - New request: INT4/INT8/INT16 and adversarial GPU/NPU/AIPU/NVMe testing; user
-  identified Axelera and requested generic NPU/GPU/TPU interfaces.
+  identified AIPU and requested generic NPU/GPU/TPU interfaces.
 - Added true signed CSQ1 codec, quantized independent heads, CPU/ONNX/JAX graph
-  paths, safe bounded file tier and native installed Metis artifact check.
+  paths, safe bounded file tier and native installed AIPU artifact check.
 - 1.3M seeded ASan/UBSan cases passed. Cross-language INT4/8/16 bytes and tokens
   agree. Physical Intel UHD770 DML profile/parity and 64MiB NVMe hash reads passed.
 - Found/fixed noncanonical Python codec acceptance, FIFO open hang, file completion
   admission race, UTF8 SDK output failure, SDK status/summary handling.
-- Native Metis1.8.0 check passed1346/1346 vendor ResNet50 golden frames, without
+- Native AIPU1.8.0 check passed1346/1346 vendor ResNet50 golden frames, without
   driver/firmware/reset/power changes. This does not certify Colibri head execution
-  or native INT4/INT16 on Metis. No physical TPU available; refusal/CPU paths tested.
+  or native INT4/INT16 on AIPU. No physical TPU available; refusal/CPU paths tested.
 - Full upstream portable C suite running; independent final review and GitHub CI pending.
 - Full portable C suite now passes; sole initial failure was the SSD vector test's
   checkout CRLF handling, corrected without weakening payload grammar validation.
 - Independent final verdict approved. Fixed accelerator CLI pack admission and
   exclusive report/diagnostic creation; deterministic completion-race regression added.
+- Broader inherited CI exposed my redundant handwritten header prerequisites in
+  the new targets (test_makefile_deps); switched them to the existing automatic
+  dependency mechanism and added that upstream gate to focused CI.
+- All 8 generated-dependency checks passed after rebuilding the earlier manual
+  benchmark through Make (creating its missing .d). Full C suite: 196 binaries.
+- Focused CI run38103395741 passed including 270648 coverage-guided libFuzzer
+  executions. OpenVINO native route subsequently added: actual CPU/GPU source
+  precisions4/8/16 and execution placement passed; local NPU absent and refusal tested.
+- User requested generic NPU/TPU/AIPU public names; renamed the AIPU adapter and
+  made installed SDK entry/environment explicit. No vendor name in public labels.
+- User raised speech/translation/camera expansion. Documented model-family and
+  streaming-runtime design; those workloads are not falsely marked implemented.

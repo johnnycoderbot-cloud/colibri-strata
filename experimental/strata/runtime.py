@@ -10,6 +10,7 @@ the output device. CPU, GPU, NPU, and TPU availability are distinct outcomes.
 import importlib
 import json
 from pathlib import Path
+import re
 import tempfile
 
 import heads
@@ -246,4 +247,74 @@ def run_jax(pack, hidden, platform="tpu", bits=4, block_values=64, expected_iden
     result = _metadata(pack, meta, bits, block_values)
     result.update({"logits": logits, "tokens": tokens, "requested_platform": platform,
                    "executed_platform": platform, "executed_devices": sorted(str(d) for d in executed_devices)})
+    return result
+
+
+def _openvino_device_matches(requested, executed):
+    # A bare plugin selects its default device; explicit ordinals never alias.
+    return executed == requested or (requested in ("GPU", "NPU") and executed == requested + ".0")
+
+
+def _openvino_execution_devices(compiled, requested):
+    try:
+        devices = compiled.get_property("EXECUTION_DEVICES")
+    except (RuntimeError, KeyError, AttributeError) as exc:
+        raise RuntimeError("OpenVINO execution-device placement could not be verified") from exc
+    if not isinstance(devices, (list, tuple)) or not devices or any(not isinstance(d, str) for d in devices):
+        raise RuntimeError("OpenVINO returned invalid execution-device placement")
+    unique = sorted(set(devices))
+    if len(unique) != 1 or not _openvino_device_matches(requested, unique[0]):
+        raise RuntimeError(f"OpenVINO substituted execution devices for {requested!r}: {unique}")
+    return unique
+
+
+def _openvino_precision_hint(compiled):
+    # A precision HINT is configuration evidence, not proof of every kernel's
+    # arithmetic precision. Keep it separate from runtime_precision below.
+    try:
+        value = compiled.get_property("INFERENCE_PRECISION_HINT")
+        return str(value.get_type_name() if hasattr(value, "get_type_name") else value)
+    except (RuntimeError, KeyError, AttributeError):
+        return "unknown"
+
+
+def run_openvino(pack, hidden, device="NPU", bits=4, block_values=64, expected_identity=None):
+    """Run the static head graph on one explicit OpenVINO CPU/GPU/NPU device.
+
+    AUTO/HETERO/MULTI selection and absent requested hardware are rejected.
+    EXECUTION_DEVICES must prove exclusive requested-device placement before
+    and after inference; explicit ordinals must match exactly. CPU/GPU request
+    the documented F32 inference-precision hint for reference parity. NPU uses
+    the plugin default. F32 graph tensors do not prove F32 NPU arithmetic:
+    runtime_precision remains unknown and the reported hint is separate.
+    """
+    heads.require(isinstance(device, str) and bool(re.fullmatch(r"CPU|(?:GPU|NPU)(?:\.[0-9]+)?", device)),
+                  "OpenVINO device must be explicit CPU, GPU[.id], or NPU[.id]")
+    ov = _dependency("openvino")
+    core = ov.Core()
+    available_devices = list(core.available_devices)
+    if not any(_openvino_device_matches(device, candidate) for candidate in available_devices):
+        raise RuntimeError(f"requested OpenVINO device {device!r} unavailable; available: {available_devices}")
+    np, meta, array = _input(pack, hidden, expected_identity)
+    model_bytes = export_onnx(pack, bits, block_values, expected_identity)
+    model = core.read_model(model=model_bytes)
+    # read_model(bytes) is the documented in-memory ONNX route; no persistent
+    # model artifacts or implicit conversion/download commands are created.
+    config = {"INFERENCE_PRECISION_HINT": ov.Type.f32} if device.split(".", 1)[0] in ("CPU", "GPU") else {}
+    compiled = core.compile_model(model=model, device_name=device, config=config)
+    _openvino_execution_devices(compiled, device)
+    request = compiled.create_infer_request()
+    outputs = request.infer({"hidden": array})
+    executed_devices = _openvino_execution_devices(compiled, device)
+    output_port = compiled.output("logits")
+    try:
+        output = outputs[output_port]
+    except (KeyError, TypeError) as exc:
+        raise RuntimeError("OpenVINO inference did not return the named logits output") from exc
+    logits, tokens = _output(np, output, pack, meta)
+    result = _metadata(pack, meta, bits, block_values)
+    result.update({"logits": logits, "tokens": tokens, "requested_device": device,
+                   "executed_devices": executed_devices, "graph_precision": "f32",
+                   "compute_precision": "unknown", "runtime_precision": "unknown",
+                   "runtime_precision_hint": _openvino_precision_hint(compiled)})
     return result
