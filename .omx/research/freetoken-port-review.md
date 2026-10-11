@@ -128,3 +128,7 @@ Approved source identities (later owner changes require an updated review record
 - `c/Makefile`: `976a0ebf9fdd9fa01b2627a8bd08bc2ca68f63ee5794233cf9eda62f0374017c`
 - `c/tests/test_vk_tier.c`: `0b3c2ea40400e9b9e16fa0aaa55e575d06238c28d9dbc1127879dc1d81350c5c`
 - `c/tools/build_mojo_dispatch.py`: `94de736e8be71f64f31c52bc392ea103008f8eca04e227a981a44444cac789c8`
+
+## Final graph-test portability follow-up
+
+Source review: **approved** for the three-line `__APPLE__`-guarded `_DARWIN_C_SOURCE 1` addition in `c/tests/test_native_graph_manifest.c`. It occurs before the first project/system header, matches the existing manifest implementation and backend test convention, and changes test compilation feature visibility without changing runtime logic. Windows/Linux definitions are unaffected. Current file SHA256 is `dc0aa9c5e3f3214f281228477b14bf1c0f62768ff0160f133940387180d5a501`. No macOS SDK/device replay or new local compiler/model run is implied by this source-only check.

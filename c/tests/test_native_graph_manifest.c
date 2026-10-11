@@ -3,6 +3,9 @@
  * were independently computed with Python hashlib over b"xml" / b"bin". */
 #ifndef _WIN32
 #define _POSIX_C_SOURCE 200809L
+#ifdef __APPLE__
+#define _DARWIN_C_SOURCE 1
+#endif
 #endif
 #include "../native_graph_manifest.h"
 #include <assert.h>
