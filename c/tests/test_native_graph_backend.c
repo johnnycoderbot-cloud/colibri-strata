@@ -27,8 +27,8 @@ struct ov_genai_whisper_generation_config_opaque { unsigned tokens;char task[16]
 struct ov_genai_decoded_results_opaque { int placeholder; };
 struct ov_genai_whisper_decoded_results_opaque { int placeholder; };
 static int handles,libraries,text_calls,audio_calls,sr_calls,token_calls;
-static int fault,token_size=7;static const char *missing_symbol;
-enum { F_PLACEMENT=1,F_PRECISION,F_OUTPUT_NAN,F_OUTPUT_SHAPE,F_OUTPUT_TYPE,F_BAD_TEXT,F_TEXT_SIZE,F_NO_NUL,F_INFER,F_DEVICE_LIST,F_META,F_CONFIG };
+static int fault,token_size=7,bare_devices;static const char *missing_symbol;
+enum { F_PLACEMENT=1,F_PRECISION,F_OUTPUT_NAN,F_OUTPUT_SHAPE,F_OUTPUT_TYPE,F_BAD_TEXT,F_TEXT_SIZE,F_NO_NUL,F_INFER,F_DEVICE_LIST,F_META,F_CONFIG,F_OTHER_GPU };
 static void *alloc_handle(size_t n){void *p=calloc(1,n);assert(p);handles++;return p;}
 static void free_handle(void *p){if(p){handles--;free(p);}}
 static char *text_copy(const char *p){size_t n=strlen(p)+1;char *r=malloc(n);assert(r);memcpy(r,p,n);return r;}
@@ -36,7 +36,7 @@ static int ov_core_create(CNGOVCore **p){*p=alloc_handle(sizeof(**p));return 0;}
 static void ov_core_free(CNGOVCore *p){free_handle(p);}
 static const char *ov_get_last_err_msg(void){return "injected native SDK failure";}
 static void ov_free(const char *p){free((void*)p);}
-static int ov_core_get_available_devices(const CNGOVCore *p,CNGDevices *d){assert(p);d->size=3;d->devices=calloc(3,sizeof(char*));assert(d->devices);d->devices[0]=text_copy("CPU");d->devices[1]=text_copy("GPU.0");d->devices[2]=text_copy(fault==F_DEVICE_LIST?"AUTO":"GPU.1");return 0;}
+static int ov_core_get_available_devices(const CNGOVCore *p,CNGDevices *d){assert(p);d->size=bare_devices?2:3;d->devices=calloc(d->size,sizeof(char*));assert(d->devices);d->devices[0]=text_copy("CPU");d->devices[1]=text_copy(bare_devices==2?"NPU":bare_devices?"GPU":"GPU.0");if(!bare_devices)d->devices[2]=text_copy(fault==F_DEVICE_LIST?"AUTO":"GPU.1");return 0;}
 static void ov_available_devices_free(CNGDevices *d){for(size_t i=0;i<d->size;i++)free(d->devices[i]);free(d->devices);memset(d,0,sizeof(*d));}
 static int ov_core_read_model(const CNGOVCore *p,const char *name,const char *bin,CNGOVModel **out){assert(p&&name&&!bin);*out=alloc_handle(sizeof(**out));(*out)->tokenizer=strstr(name,"tokenizer")!=NULL;return 0;}
 static void ov_model_free(CNGOVModel *m){free_handle(m);}
@@ -55,7 +55,7 @@ static int ov_core_compile_model(const CNGOVCore *core,const CNGOVModel *m,const
 }
 static void ov_compiled_model_free(CNGOVCompiled *p){free_handle(p);}
 static int ov_compiled_model_get_property(const CNGOVCompiled *m,const char *key,char **value){
-    if(!strcmp(key,"EXECUTION_DEVICES")){*value=text_copy(fault==F_PLACEMENT?"CPU":strcmp(m->device,"GPU")?m->device:"GPU.0");return 0;}
+    if(!strcmp(key,"EXECUTION_DEVICES")){*value=text_copy(fault==F_PLACEMENT?"CPU":fault==F_OTHER_GPU?"GPU.1":strcmp(m->device,"GPU")?m->device:"GPU.0");return 0;}
     if(!strcmp(key,"INFERENCE_PRECISION_HINT")){if(fault==F_PRECISION)return -1;*value=text_copy("f32");return 0;}return -1;
 }
 static int ov_compiled_model_create_infer_request(const CNGOVCompiled *m,CNGOVRequest **out){*out=alloc_handle(sizeof(**out));(*out)->tokenizer=m->tokenizer;return 0;}
@@ -157,6 +157,11 @@ int main(void){
     int sf[]={F_OUTPUT_NAN,F_OUTPUT_SHAPE,F_OUTPUT_TYPE,F_INFER,F_PLACEMENT};for(size_t i=0;i<sizeof(sf)/sizeof(sf[0]);i++){fault=sf[i];n=123;assert(cng_sr(e,lr,18,bc,288,&pixels,&n,error,sizeof(error))!=CNG_OK&&!pixels&&n==123);}fault=0;
     assert(cng_sr(e,lr,17,bc,288,&pixels,&n,error,sizeof(error))==CNG_INVALID);lr[0]=256;assert(cng_sr(e,lr,18,bc,288,&pixels,&n,error,sizeof(error))==CNG_NONFINITE);lr[0]=127;
     cng_destroy(e);e=NULL;clean();
+    bare_devices=1;sr.device="GPU.0";assert(cng_create(&sr,&e,error,sizeof(error))==CNG_OK);assert(cng_info(e,&info)==CNG_OK&&info.execution_devices_verified&&!strcmp(info.selected_device,"GPU.0"));cng_destroy(e);e=NULL;clean();
+    sr.device="GPU.1";assert(cng_create(&sr,&e,error,sizeof(error))==CNG_DEVICE&&!e);clean();
+    sr.device="GPU.0";fault=F_PLACEMENT;assert(cng_create(&sr,&e,error,sizeof(error))==CNG_DEVICE&&!e);clean();fault=F_OTHER_GPU;assert(cng_create(&sr,&e,error,sizeof(error))==CNG_DEVICE&&!e);clean();
+    bare_devices=2;sr.device="NPU.0";assert(cng_create(&sr,&e,error,sizeof(error))==CNG_OK);assert(cng_info(e,&info)==CNG_OK&&info.execution_devices_verified&&!strcmp(info.selected_device,"NPU.0"));cng_destroy(e);e=NULL;clean();
+    sr.device="NPU.1";assert(cng_create(&sr,&e,error,sizeof(error))==CNG_DEVICE&&!e);clean();bare_devices=0;
     sr.device="GPU.1";assert(cng_create(&sr,&e,error,sizeof(error))==CNG_OK);assert(cng_info(e,&info)==CNG_OK&&!strcmp(info.selected_device,"GPU.1"));cng_destroy(e);e=NULL;clean();
     printf("native C backend fake-SDK: text%d/audio%d/SR%d/tokenizer%d calls, limits, device refusal, exact ownership passed\n",text_calls,audio_calls,sr_calls,token_calls);return 0;
 }

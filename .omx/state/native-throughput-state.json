@@ -118,5 +118,16 @@
     "source_commit": "ad468a584dde06b281fb918c589e1d03b4e630d4",
     "ci": "https://github.com/johnnycoderbot-cloud/colibri-strata/actions/runs/38159354356",
     "ci_status": "success"
+  },
+  "primary_local_accelerator": {
+    "target": "Intel UHD Graphics770 iGPU",
+    "device": "GPU.0",
+    "native_execution_backend": "OpenVINO C APIs",
+    "external_project": "E:/My Documents/Needle/openvino-windows-llm",
+    "evidence": ".omx/research/openvino-igpu-project-check.json",
+    "qualification": "fresh native C trained super-resolution, GPU/GPU.0 exact output and GPU.1 refusal; clean shutdown",
+    "historical_llm_evidence": "external project's single TinyLlama INT4 run: CPU14.373/GPU25.790 tokens/s; not a new paired fork gain",
+    "profile_rule": "integrated-device transfer/shared-memory costs must be measured for this target; do not import discrete GPU PCIe rates",
+    "mojo_coordinator_wiring": "pending for OpenVINO; current Mojo cold expert production caller remains shared Vulkan"
   }
 }

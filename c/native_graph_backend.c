@@ -139,6 +139,10 @@ static int cng_device_valid(const char *p) {
 }
 static int cng_device_matches(const char *request,const char *actual) {
     if(!strcmp(request,actual))return 1;
+    /* A single accelerator is enumerated without an index by OpenVINO.
+     * Only its explicit default index aliases that name; never another device. */
+    if((!strcmp(request,"GPU.0")&&!strcmp(actual,"GPU"))||
+       (!strcmp(request,"NPU.0")&&!strcmp(actual,"NPU")))return 1;
     size_t n=strlen(request);return !strchr(request,'.')&&strncmp(request,actual,n)==0&&actual[n]=='.'&&cng_device_valid(actual);
 }
 static int cng_finite(const float *p,size_t n,int pixels) {

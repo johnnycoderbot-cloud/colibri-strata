@@ -210,5 +210,25 @@
       "tensor-parallel collective and semantic-anchor ports remain separate"
     ],
     "cleanup_review": "normalization pipeline/shader/descriptors owned and released after device-idle; cleanup-only repair changes no inference operation"
+  },
+  {
+    "id": "openvino-igpu-default-index",
+    "reviewer": "/root/architecture",
+    "status": "approved",
+    "scope": "native C default-index alias admission and retained execution-device verification",
+    "artifact": ".omx/research/openvino-igpu-review.md",
+    "evidence": ".omx/research/openvino-igpu-project-check.json",
+    "verification": [
+      "Windows MSVC native build/full SDK-free contracts",
+      "Linux backend ASan/UBSan/leaks",
+      "fresh trained native C GPU/GPU.0 output equivalence and clean closure on Intel UHD770",
+      "actual unavailable GPU.1 refusal; fake NPU0/1 and CPU/other-GPU substitution cases"
+    ],
+    "qualification_limits": [
+      "two functional physical-iGPU camera replays, not a paired speed benchmark",
+      "historical external TinyLlama tokens/s are not a new fork gain",
+      "native Mojo coordinator is not yet connected to OpenVINO",
+      "no physical NPU qualification"
+    ]
   }
 ]

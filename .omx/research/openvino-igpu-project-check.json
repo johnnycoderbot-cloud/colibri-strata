@@ -1,0 +1,114 @@
+{
+  "schema": "colibri.openvino-igpu-project-check/v1",
+  "checked_at_utc": "2026-10-12T15:26:42.762136+00:00",
+  "project": "E:\\My Documents\\Needle\\openvino-windows-llm",
+  "external_project_modified": false,
+  "live_project_runtime": {
+    "version": "2026.2.1-21919-ede283a88e3-releases/2026/2",
+    "devices": [
+      "CPU",
+      "GPU"
+    ],
+    "gpu_name": "Intel(R) UHD Graphics 770 (iGPU)",
+    "gpu_type": "Type.INTEGRATED",
+    "gpu_capabilities": [
+      "FP32",
+      "BIN",
+      "FP16",
+      "INT8",
+      "GPU_USM_MEMORY",
+      "EXPORT_IMPORT"
+    ],
+    "Windows_driver_version": "32.0.101.7088"
+  },
+  "source_sha256": {
+    "runtime/openvino_engine.py": "0f8f8aee971c6c90972db46c23ec7c8af83c673f3297490ec0872d40f385c72c",
+    "runtime/device_check.py": "3521a26ec938c4534be8740992138ad8286c63cf29b52984ae192ad4efcc0dff",
+    "runtime/benchmark_runner.py": "13bb79aa097b69e4b00a4b615d8e0791d8ae0a6ce8fd10e3556817700fff228e",
+    "start_local.ps1": "0b7658c837b9514e8df34ffae5324f0bc92b8c34c7cd38111e9c48b4d74be703"
+  },
+  "historical_benchmark": {
+    "path": "E:\\My Documents\\Needle\\openvino-windows-llm\\benchmark\\results\\benchmarks.json",
+    "sha256": "08225bcb904c4357ff0d4801b35144058be7b145fe6f2553d1a7fe350f86eaa3",
+    "created_at": "2026-07-13T01:36:06Z",
+    "mock": false,
+    "runs_per_combo": 1,
+    "results": [
+      {
+        "model_id": "tinyllama-1.1b-chat-int4",
+        "requested_device": "CPU",
+        "actual_device": "CPU",
+        "tokens_sec": 14.373,
+        "time_to_first_token_ms": 1989.974,
+        "completion_tokens": 65,
+        "success": true
+      },
+      {
+        "model_id": "tinyllama-1.1b-chat-int4",
+        "requested_device": "GPU",
+        "actual_device": "GPU",
+        "tokens_sec": 25.79,
+        "time_to_first_token_ms": 352.632,
+        "completion_tokens": 65,
+        "success": true
+      },
+      {
+        "model_id": "tinyllama-1.1b-chat-int4",
+        "requested_device": "AUTO",
+        "actual_device": null,
+        "tokens_sec": 24.713,
+        "time_to_first_token_ms": 374.122,
+        "completion_tokens": 65,
+        "success": true
+      }
+    ],
+    "scope": "historical reported single run per device; not a new paired Colibri speedup or current full-model execution-device proof"
+  },
+  "source_review": {
+    "gpu_execution": "explicit GPU passed to native OpenVINO GenAI LLMPipeline",
+    "resident_model": "pipeline retained by loaded engine; bounded keep_igpu_model_hot script present",
+    "compiled_model_cache": "CACHE_DIR configured when caller supplies cache directory",
+    "routing": "AUTO, MULTI and HETERO are available expressions; no measured concurrent cold expert split in this engine",
+    "benchmark_device_gap": "physical target fallback label is copied from engine.device; AUTO/MULTI/HETERO unresolved labels remain null; no EXECUTION_DEVICES query in this local LLM engine"
+  },
+  "new_native_c_igpu_check": {
+    "status": "passed",
+    "trained_model": "single-image-super-resolution-1032",
+    "startup_seconds": 0.2957678000002488,
+    "result": {
+      "width": 512,
+      "height": 384,
+      "scale": 4,
+      "inference_runtime": "native-c",
+      "device": "GPU.0",
+      "execution_devices_verified": true,
+      "backend": "openvino-native-c",
+      "family": "camera_upscale",
+      "model_id": "colibri-camera_upscale",
+      "compiled_device": "GPU.0"
+    },
+    "input_sha256": "d0f33a93b1d36bce88799fe8976972670ad05d9aacc53b86d2da8b4ad79477a2",
+    "output_sha256": "24b2ab8ea501a62ac15e4da30f20fcc1d9e9cd35489b691f0444ae386e64e32e",
+    "native_binary_sha256": "708a3884a2459c82fa4128f4c26cb7df4b25d9c0332809d14a034ab580b330b1",
+    "native_backend_sha256": "5192a6260f55514c1179906f6f76dd1e2584346c4b9a733aad7959ad9868e3b7",
+    "manifest_sha256": "5f77fce5fd8b17835dbbe2967c3b778e38ada16c829a68ca9340f879c9087c3e",
+    "python_ml_modules_loaded": [],
+    "scope": "two fresh equivalent trained-model native C inferences through GPU/GPU.0 on physical iGPU; unavailable GPU.1 refusal; not a paired throughput benchmark",
+    "native_process_close_passed": true,
+    "default_alias_exact_output": true,
+    "default_alias_clean_close": true,
+    "absent_gpu_1_refused_without_fallback": true,
+    "native_sdk": "OpenVINO GenAI native SDK2026.4.1.0; camera uses OpenVINO C core APIs"
+  },
+  "qualification_limits": [
+    "iGPU is an explicit physical target; new Mojo shared-Vulkan cold splitter is not yet connected to OpenVINO",
+    "historical TinyLlama metrics are not a new fork speedup",
+    "current project OpenVINO inventory exposes CPU/GPU, not NPU",
+    "historical completion tokens are the project's reported counts; no new SDK-native token count or isolated decode comparison is inferred"
+  ],
+  "verification": {
+    "Windows_MSVC_native_build_and_contracts": "passed",
+    "Linux_backend_ASan_UBSan_leaks": "passed",
+    "source_review": "approved by /root: default zero index only; other indices remain exact; compiled device verification still rejects CPU/other-GPU substitution"
+  }
+}

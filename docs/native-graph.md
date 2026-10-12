@@ -65,6 +65,16 @@ workload that C cannot execute.
 
 ## Run
 
+The Intel UHD Graphics 770 iGPU is an explicit physical target. A fresh Windows
+native C replay on 2026-10-12 ran trained 4x super-resolution with
+EXECUTION_DEVICES verified as GPU.0. Explicit GPU and GPU.0 produced identical
+PNG output; unavailable GPU.1 was refused. The native backend now accepts the
+default zero index when OpenVINO enumerates a single accelerator without an
+index. Other indices and CPU/other-device substitutions remain rejected.
+See the [iGPU project check](../.omx/research/openvino-igpu-project-check.json).
+This is functional physical-iGPU evidence. It does not establish a new LLM
+speedup or connect the shared Vulkan Mojo splitter to this OpenVINO adapter.
+
 Prepared immutable packs and existing CLI/API routes are unchanged:
 
 ~~~sh
